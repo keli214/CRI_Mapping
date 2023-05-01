@@ -267,7 +267,7 @@ class Spikformer(nn.Module):
 @register_model
 def spikformer(pretrained=False, **kwargs):
     model = Spikformer(
-        # img_size_h=224, img_size_w=224,
+        # img_size_h=224, img_size_h=224,
         # patch_size=16, embed_dims=768, num_heads=12, mlp_ratios=4,
         # in_channels=3, num_classes=1000, qkv_bias=False,
         # norm_layer=partial(nn.LayerNorm, eps=1e-6), depths=12, sr_ratios=1,

@@ -38,7 +38,7 @@ from timm.utils import ApexScaler, NativeScaler
 from model import Spikformer
 import model
 from tqdm import tqdm, trange
-from cri_converter import BN_Folder, Quantize_Network
+from cri_converter import BN_Folder, Quantize_Network, CRI_Converter
 from torchsummary import summary
 from torch.utils.tensorboard import SummaryWriter
 from spikingjelly.clock_driven.neuron import MultiStepLIFNode
@@ -342,14 +342,22 @@ def weight_histograms(writer, step, model, layer_number):
             elif isinstance(layer, nn.Linear):
                 weights = layer.weight
                 weight_histograms_linear(writer, step, weights, name)
-        
+
+def save_checkpoint(state, is_quan, fdir, num_layer):
+    filepath = os.path.join(fdir, 'checkpoint.pth')
+    torch.save(state, filepath)
+    if is_quan:
+        shutil.copyfile(filepath, os.path.join(fdir, f'model_spikingjelly_quan_{num_layer}.pth.tar'))
+    else:
+        shutil.copyfile(filepath, os.path.join(fdir, f'model_spikingjelly_{num_layer}.pth.tar'))
+
 def validate(model, loader, loss_fn, args, amp_autocast=suppress, log_suffix=''):
     batch_time_m = AverageMeter()
     losses_m = AverageMeter()
     top1_m = AverageMeter()
     top5_m = AverageMeter()
     
-    
+    cri = CRI_Converter(4)#num_steps
 
     model.eval()
 
@@ -433,47 +441,19 @@ def main():
     setup_default_logging()
     args, args_text = _parse_args()
 
-    if args.log_wandb:
-        if has_wandb:
-            wandb.init(project=args.experiment, config=args)
-        else:
-            _logger.warning("You've requested to log metrics to wandb but package not found. "
-                            "Metrics not being logged to wandb, try `pip install wandb`")
+    # if args.log_wandb:
+    #     if has_wandb:
+    #         wandb.init(project=args.experiment, config=args)
+    #     else:
+    #         _logger.warning("You've requested to log metrics to wandb but package not found. "
+    #                         "Metrics not being logged to wandb, try `pip install wandb`")
 
     args.prefetcher = not args.no_prefetcher
     args.distributed = False
-    if 'WORLD_SIZE' in os.environ:
-        args.distributed = int(os.environ['WORLD_SIZE']) > 1
+
     args.device = 'cuda'
     args.world_size = 1
     args.rank = 0  # global rank
-    if args.distributed:
-        args.device = 'cuda:%d' % args.local_rank
-        torch.cuda.set_device(args.local_rank)
-        torch.distributed.init_process_group(backend='nccl', init_method='env://')
-        args.world_size = torch.distributed.get_world_size()
-        args.rank = torch.distributed.get_rank()
-        _logger.info('Training in distributed mode with multiple processes, 1 GPU per process. Process %d, total %d.'
-                     % (args.rank, args.world_size))
-    else:
-        _logger.info('Training with a single process on 1 GPUs.')
-    assert args.rank >= 0
-
-    # resolve AMP arguments based on PyTorch / Apex availability
-    use_amp = None
-    if args.amp:
-        # `--amp` chooses native amp before apex (APEX ver not actively maintained)
-        if has_native_amp:
-            args.native_amp = True
-        elif has_apex:
-            args.apex_amp = True
-    if args.apex_amp and has_apex:
-        use_amp = 'apex'
-    elif args.native_amp and has_native_amp:
-        use_amp = 'native'
-    elif args.apex_amp or args.native_amp:
-        _logger.warning("Neither APEX or native Torch AMP is available, using float32. "
-                        "Install NVIDA apex or upgrade to PyTorch 1.6")
 
     random_seed(args.seed, args.rank)
     model = Spikformer(
@@ -487,41 +467,14 @@ def main():
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"number of params: {n_parameters}")
 
-    if args.num_classes is None:
-        assert hasattr(model, 'num_classes'), 'Model must have `num_classes` attr if not set on cmd line/config.'
-        args.num_classes = model.num_classes  # FIXME handle model default vs config num_classes more elegantly
-
     if args.local_rank == 0:
         _logger.info(
             f'Model {safe_model_name(args.model)} created, param count:{sum([m.numel() for m in model.parameters()])}')
 
     data_config = resolve_data_config(vars(args), model=model, verbose=args.local_rank == 0)
 
-    # setup augmentation batch splits for contrastive loss or split bn
     num_aug_splits = 0
-    if args.aug_splits > 0:
-        assert args.aug_splits > 1, 'A split of 1 makes no sense'
-        num_aug_splits = args.aug_splits
-
-    # enable split bn (separate bn stats per batch-portion)
-    if args.split_bn:
-        assert num_aug_splits > 1 or args.resplit
-        model = convert_splitbn_model(model, max(num_aug_splits, 2))
-
-    if args.torchscript:
-        assert not use_amp == 'apex', 'Cannot use APEX AMP with torchscripted model'
-        assert not args.sync_bn, 'Cannot use SyncBatchNorm with torchscripted model'
-        model = torch.jit.script(model)
-
-    # setup exponential moving average of model weights, SWA could be used here too
-    model_ema = None
-    if args.model_ema:
-        # Important to create EMA model after cuda(), DP wrapper, and AMP but before SyncBN and DDP wrapper
-        model_ema = ModelEmaV2(
-            model, decay=args.model_ema_decay, device='cpu' if args.model_ema_force_cpu else None)
-        if args.resume:
-            load_checkpoint(model_ema.module, args.resume, use_ema=True)
-
+    
     dataset_train = create_dataset(args.dataset,root=args.data_dir, split=args.train_split, is_training=True,batch_size=args.batch_size, repeats=args.epoch_repeats, download = False)
     dataset_eval = create_dataset(args.dataset,root=args.data_dir, split=args.val_split, is_training=False, batch_size=args.batch_size, download = False)
 
@@ -529,16 +482,6 @@ def main():
     collate_fn = None
     mixup_fn = None
     mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
-    if mixup_active:
-        mixup_args = dict(
-            mixup_alpha=args.mixup, cutmix_alpha=args.cutmix, cutmix_minmax=args.cutmix_minmax,
-            prob=args.mixup_prob, switch_prob=args.mixup_switch_prob, mode=args.mixup_mode,
-            label_smoothing=args.smoothing, num_classes=args.num_classes)
-        if args.prefetcher:
-            assert not num_aug_splits  # collate conflict (need to support deinterleaving in collate mixup)
-            collate_fn = FastCollateMixup(**mixup_args)
-        else:
-            mixup_fn = Mixup(**mixup_args)
 
     #Load the checkpoint into model 
     checkpoint_path = "/Volumes/export/isn/gopa/CRI_proj/cri_spikeformer/cifar10/output/train/20230301-194515-spikformer-32/checkpoint-307.pth.tar"
@@ -603,6 +546,14 @@ def main():
     quan_fun = Quantize_Network() # weight_quantization
     quan_model = quan_fun.quantize(bn_model)
     
+    if not os.path.exists('result/transformer'):
+    os.makedirs('result/transformer')
+    fdir = 'result/transformer'
+    if not os.path.exists(fdir):
+        os.makedirs(fdir)
+    save_checkpoint({'state_dict': quan_model.state_dict(),}, 1, fdir, len(quan_model.state_dict()))    
+    
+    
     # writer = SummaryWriter('runs/transformer/quan_model')
     # weight_histograms(writer, 0, quan_model, 0)
     
@@ -618,7 +569,18 @@ def main():
     print("After quan_model: ", torch.cuda.memory_allocated())
     
     validate_loss_fn = nn.CrossEntropyLoss().cuda() # Valid accuracy
-    validate(quan_model, loader_eval, validate_loss_fn, args)     
+    validate(quan_model, loader_eval, validate_loss_fn, args)   
+    
+    
+#     model.cuda() # move model to GPU, enable channels last layout if set
+#     if args.channels_last:
+#         model = model.to(memory_format=torch.channels_last)
+#     print("After quan_model: ", torch.cuda.memory_allocated())
+    
+#     validate_loss_fn = nn.CrossEntropyLoss().cuda() # Valid accuracy
+#     validate(model, loader_eval, validate_loss_fn, args)     
+    
+   
     
     # print(quan_model.patch_embed.proj_lif)
     

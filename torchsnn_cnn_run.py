@@ -38,9 +38,9 @@ transform = transforms.Compose([
 mnist_train = datasets.MNIST(data_path, train=True, download=True, transform=transform)
 mnist_test = datasets.MNIST(data_path, train=False, download=True, transform=transform)
 
-# reduce datasets by 10x to speed up training
-utils.data_subset(mnist_train, subset)
-utils.data_subset(mnist_test, subset)
+# # reduce datasets by 10x to speed up training
+# utils.data_subset(mnist_train, subset)
+# utils.data_subset(mnist_test, subset)
 
 # Create DataLoaders
 train_loader = DataLoader(mnist_train, batch_size=batch_size, shuffle=True, drop_last=True)
