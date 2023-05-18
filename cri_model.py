@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from spikingjelly.clock_driven.neuron import MultiStepLIFNode
+from spikingjelly.activation_based import neuron, functional, surrogate, layer
 from timm.models.layers import to_2tuple, trunc_normal_, DropPath
 from timm.models.registry import register_model
 from timm.models.vision_transformer import _cfg
@@ -37,11 +37,11 @@ class MLP(nn.Module):
         hidden_features = hidden_features or in_features
         self.fc1_linear = nn.Linear(in_features, hidden_features)
         self.fc1_bn = nn.BatchNorm1d(hidden_features)
-        self.fc1_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.fc1_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
 
         self.fc2_linear = nn.Linear(hidden_features, out_features)
         self.fc2_bn = nn.BatchNorm1d(out_features)
-        self.fc2_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.fc2_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
 
         self.c_hidden = hidden_features
         self.c_output = out_features
@@ -66,30 +66,31 @@ class SSA(nn.Module):
         self.dim = dim
         self.num_heads = num_heads
         self.scale = 0.125
-        self.q_linear = nn.Linear(dim, dim)
+        self.q_linear = nn.Linear(dim, dim, bias = False)
         self.q_bn = nn.BatchNorm1d(dim)
-        self.q_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.q_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
 
-        self.k_linear = nn.Linear(dim, dim)
+        self.k_linear = nn.Linear(dim, dim, bias = False)
         self.k_bn = nn.BatchNorm1d(dim)
-        self.k_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.k_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
 
-        self.v_linear = nn.Linear(dim, dim)
+        self.v_linear = nn.Linear(dim, dim, bias = False)
         self.v_bn = nn.BatchNorm1d(dim)
-        self.v_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
-        #Threshld should not be quantized for attn_lif
-        self.attn_lif = MultiStepLIFNode(tau=2.0, v_threshold=0.5, detach_reset=True)
+        self.v_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
+        self.attn_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
 
-        self.proj_linear = nn.Linear(dim, dim)
+        self.proj_linear = nn.Linear(dim, dim, bias = False)
         self.proj_bn = nn.BatchNorm1d(dim)
-        self.proj_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.proj_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
 
     def forward(self, x):
         T,B,N,C = x.shape # C = H*W = 32*32 = 1024
                         
-
+        
         x_for_qkv = x.flatten(0, 1)  # TB, N, C
+        # print(f"x_for_qkv.shape: {x_for_qkv.shape}")
         q_linear_out = self.q_linear(x_for_qkv)  # [TB, N, C]
+        # print(f"q_linear_out.shape: {q_linear_out.shape}")
         q_linear_out = self.q_bn(q_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T, B, N, C).contiguous()
         q_linear_out = self.q_lif(q_linear_out)
         q = q_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
@@ -106,10 +107,13 @@ class SSA(nn.Module):
         
         attn = (q @ k.transpose(-2, -1)) * self.scale
         x = attn @ v
+        # print(f"m.shape: {x.shape}")
         x = x.transpose(2, 3).reshape(T, B, N, C).contiguous()
         x = self.attn_lif(x)
+        # print(f"atten: {x.shape}")
         x = x.flatten(0, 1)
         x = self.proj_lif(self.proj_bn(self.proj_linear(x).transpose(-1, -2)).transpose(-1, -2).reshape(T, B, N, C))
+        # print(f"proj_lif.shape: {x.shape}")
         return x
 
 class Block(nn.Module):
@@ -143,30 +147,28 @@ class SPS(nn.Module):
         self.num_patches = self.H * self.W #1024
         self.proj_conv = nn.Conv2d(in_channels, embed_dims//8, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn = nn.BatchNorm2d(embed_dims//8)
-        self.proj_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
-
+        self.proj_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
         self.proj_conv1 = nn.Conv2d(embed_dims//8, embed_dims//4, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn1 = nn.BatchNorm2d(embed_dims//4)
-        self.proj_lif1 = MultiStepLIFNode(tau=2.0, detach_reset=True)
-
+        self.proj_lif1 = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
         self.proj_conv2 = nn.Conv2d(embed_dims//4, embed_dims//2, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn2 = nn.BatchNorm2d(embed_dims//2)
-        self.proj_lif2 = MultiStepLIFNode(tau=2.0, detach_reset=True)
-        self.maxpool2 = torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)
+        self.proj_lif2 = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
+        self.maxpool2 = torch.nn.AvgPool2d(kernel_size=3, stride=2, padding=1, ceil_mode=False)
 
         self.proj_conv3 = nn.Conv2d(embed_dims//2, embed_dims, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn3 = nn.BatchNorm2d(embed_dims)
-        self.proj_lif3 = MultiStepLIFNode(tau=2.0, detach_reset=True)
-        self.maxpool3 = torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)
+        self.proj_lif3 = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
+        self.maxpool3 = torch.nn.AvgPool2d(kernel_size=3, stride=2, padding=1, ceil_mode=False)
 
         self.rpe_conv = nn.Conv2d(embed_dims, embed_dims, kernel_size=3, stride=1, padding=1, bias=False)
         self.rpe_bn = nn.BatchNorm2d(embed_dims)
-        self.rpe_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
-
+        self.rpe_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
     def forward(self, x):
         T, B, C, H, W = x.shape #time_step, batch_num, color_channel, h, w
         x = self.proj_conv(x.flatten(0, 1)) # have some fire value
         x = self.proj_bn(x).reshape(T, B, -1, H, W).contiguous()
+        
         x = self.proj_lif(x).flatten(0, 1).contiguous()
         # print("T0:", x.reshape(T,B, -1, H, W)[0,0,:,0,0] )
         # print("T1:", x.reshape(T,B, -1, H, W)[1,0,:,0,0] )
@@ -177,6 +179,7 @@ class SPS(nn.Module):
         
         x = self.proj_conv2(x)
         x = self.proj_bn2(x).reshape(T, B, -1, H, W).contiguous()
+        
         x = self.proj_lif2(x).flatten(0, 1).contiguous()
         x = self.maxpool2(x)
 

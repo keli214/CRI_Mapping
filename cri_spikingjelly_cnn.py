@@ -18,48 +18,53 @@ import shutil
 from quant_layer import *
 from cri_converter import BN_Folder, Quantize_Network, CRI_Converter
 from torchsummary import summary
-from spikingjelly.activation_based.model import spiking_resnet
+from timm.models import resume_checkpoint
+#from spikingjelly.activation_based.model import spiking_resnet
+import getopt
+# from cri_test import train
 
 class CIFAR10(nn.Module):
-    def __init__(self, T: int, channels: int, use_cupy=False):
+    def __init__(self, T: int, channels: int, features: int, use_cupy=False):
         super().__init__()
         self.T = T
 
         self.conv_fc = nn.Sequential(
-        layer.Conv2d(3, channels, kernel_size=3, padding=1, bias=False),
-        layer.BatchNorm2d(channels),
+        layer.Conv2d(channels, channels*features, kernel_size=3, padding=1, bias=False),
+        layer.BatchNorm2d(channels*features),
         neuron.IFNode(surrogate_function=surrogate.ATan()),
         
-        layer.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
-        layer.BatchNorm2d(channels),
+        layer.Conv2d(channels*features, channels*features*2, kernel_size=3, padding=1, bias=False),
+        layer.BatchNorm2d(channels*features*2),
         neuron.IFNode(surrogate_function=surrogate.ATan()),
             
-        layer.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
-        layer.BatchNorm2d(channels),
+        layer.Conv2d(channels*features*2, channels*features*4, kernel_size=3, padding=1, bias=False),
+        layer.BatchNorm2d(channels*features*4),
         neuron.IFNode(surrogate_function=surrogate.ATan()),
             
-        layer.AvgPool2d(2, 2),  # 14 * 14
+        layer.AvgPool2d(kernel_size=3, stride=2, padding=1, ceil_mode=False),  # 14 * 14
             
         
-        layer.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
-        layer.BatchNorm2d(channels),
+        layer.Conv2d(channels*features*4, channels*features*8, kernel_size=3, padding=1, bias=False),
+        layer.BatchNorm2d(channels*features*8),
         neuron.IFNode(surrogate_function=surrogate.ATan()),
         
-        layer.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
-        layer.BatchNorm2d(channels),
+        layer.Conv2d(channels*features*8, channels*features*16, kernel_size=3, padding=1, bias=False),
+        layer.BatchNorm2d(channels*features*16),
         neuron.IFNode(surrogate_function=surrogate.ATan()),
             
-        layer.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
-        layer.BatchNorm2d(channels),
+        layer.Conv2d(channels*features*16, channels*features*8, kernel_size=3, padding=1, bias=False),
+        layer.BatchNorm2d(channels*features*8),
         neuron.IFNode(surrogate_function=surrogate.ATan()),
             
-        layer.AvgPool2d(2, 2),  # 14 * 14
+        layer.AvgPool2d(kernel_size=3, stride=2, padding=1, ceil_mode=False),  # 14 * 14
 
         layer.Flatten(),
-        layer.Linear(channels * 8 * 8, 2048, bias=False),
+        layer.Dropout(0.5),
+        layer.Linear(channels*features*8*64, 1000, bias=False),
         neuron.IFNode(surrogate_function=surrogate.ATan()),
-
-        layer.Linear(2048, 100, bias=False),
+        
+        layer.Dropout(0.5),
+        layer.Linear(1000, 100, bias=False),
         neuron.IFNode(surrogate_function=surrogate.ATan()),
     
         layer.Linear(100, 10, bias=False),
@@ -74,15 +79,6 @@ class CIFAR10(nn.Module):
         x_seq = self.conv_fc(x_seq)
         fr = x_seq.mean(0)
         return fr
-    
-
-def save_checkpoint(state, is_quan, fdir, num_layer):
-    filepath = os.path.join(fdir, 'checkpoint.pth')
-    torch.save(state, filepath)
-    if is_quan:
-        shutil.copyfile(filepath, os.path.join(fdir, f'model_cifar_quan_{num_layer}.pth.tar'))
-    else:
-        shutil.copyfile(filepath, os.path.join(fdir, f'model_cifar_{num_layer}_s.pth.tar'))
 
 def validate(net, test_loader, device, out_dir):
     start_time = time.time()
@@ -91,7 +87,7 @@ def validate(net, test_loader, device, out_dir):
     test_acc = 0
     test_samples = 0
     
-    writer = SummaryWriter(out_dir)
+    # writer = SummaryWriter(out_dir)
     
     with torch.no_grad():
         for img, label in test_loader:
@@ -99,7 +95,7 @@ def validate(net, test_loader, device, out_dir):
             label = label.to(device)
             label_onehot = F.one_hot(label, 10).float()
             out_fr = net(img)
-            loss = F.mse_loss(out_fr, label_onehot)
+            loss = F.cross_entropy(out_fr, label_onehot)
 
             test_samples += label.numel()
             test_loss += loss.item() * label.numel()
@@ -109,8 +105,8 @@ def validate(net, test_loader, device, out_dir):
         test_speed = test_samples / (test_time - start_time)
         test_loss /= test_samples
         test_acc /= test_samples
-        writer.add_scalar('test_loss', test_loss)
-        writer.add_scalar('test_acc', test_acc)
+        # writer.add_scalar('test_loss', test_loss)
+        # writer.add_scalar('test_acc', test_acc)
     
     print(f'test_loss ={test_loss: .4f}, test_acc ={test_acc: .4f}')
     print(f'test speed ={test_speed: .4f} images/s')
@@ -122,7 +118,7 @@ def validate_cri(test_loader, out_dir):
     test_acc = 0
     test_samples = 0
     
-    writer = SummaryWriter(out_dir+'/cri')
+    # writer = SummaryWriter(out_dir+'/cri')
     
     with torch.no_grad():
         for img, label in test_loader:
@@ -130,7 +126,7 @@ def validate_cri(test_loader, out_dir):
             label = label.to(device)
             label_onehot = F.one_hot(label, 10).float()
             out_fr = net(img)
-            loss = F.mse_loss(out_fr, label_onehot)
+            loss = F.cross_entropy(out_fr, label_onehot)
 
             test_samples += label.numel()
             test_loss += loss.item() * label.numel()
@@ -140,24 +136,45 @@ def validate_cri(test_loader, out_dir):
         test_speed = test_samples / (test_time - start_time)
         test_loss /= test_samples
         test_acc /= test_samples
-        writer.add_scalar('test_loss', test_loss)
-        writer.add_scalar('test_acc', test_acc)
+        # writer.add_scalar('test_loss', test_loss)
+        # writer.add_scalar('test_acc', test_acc)
     
     print(f'test_loss ={test_loss: .4f}, test_acc ={test_acc: .4f}')
     print(f'test speed ={test_speed: .4f} images/s')
     
-def main():
+def main(argv):
+    # resume_path, load_path, train_flag = "", "", False
+    # # args = argv.split()
+    # opts, args = getopt.getopt(argv,"tr:l:",["resume=", "load="], )
+    # for opt, arg in opts:
+    #     if opt in ('-r','--resume'):
+    #         resume_path = str(arg)
+    #     elif opt in ('-l', '--load'):
+    #         load_path = str(arg)
+    #     elif opt == '-t':
+    #         train_flag = True 
+            
     # dataloader arguments
-    batch_size = 64
-    data_path='/home/keli/code/data'
+    batch_size = 128
+    data_path='/Volumes/export/isn/keli/code/data'
     out_dir = 'runs/cifar10'
-    epochs = 25
+    epochs = 10
     start_epoch = 0
-    lr = 0.1
+    lr = 1e-1 #change the learning rate
     momentum = 0.9
     T = 4
-    channels = 256
+    channels = 3
+    features = 2
     max_test_acc = -1
+    
+    resume_path = ""
+    
+    opts, args = getopt.getopt(argv,"r:",["resume="])
+    for opt, arg in opts:
+        if opt in ('-r','--resume'):
+            resume_path = str(arg)
+
+
 
     dtype = torch.float
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -174,17 +191,38 @@ def main():
     train_loader = DataLoader(cifar_train, batch_size=batch_size, shuffle=True, drop_last=True)
     test_loader = DataLoader(cifar_test, batch_size=batch_size, shuffle=True, drop_last=True)
 
-    net = CIFAR10(T = T, channels = channels, use_cupy=False)
-    print(net)
-    n_parameters = sum(p.numel() for p in net.parameters() if p.requires_grad)
-    print(f"number of params: {n_parameters}")
+    net = CIFAR10(T = T, channels = channels, features = features, use_cupy=False)
     print("before model: ", torch.cuda.memory_allocated())
     net.to(device)
     print("After model: ", torch.cuda.memory_allocated())
-
+    print(net)
     optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=momentum)
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs)
-    writer = SummaryWriter(out_dir)
+    
+#     net.to(device)
+    
+#     if resume_path != "" or train_flag:
+#         print('Start Training')
+#         train(argv, net, train_loader, test_loader, device, out_dir, epochs, resume_path)
+#     elif load_path != "":
+#         checkpoint = torch.load(load_path, map_location=device)
+#         net.load_state_dict(checkpoint['net'])
+#         validate(net, test_loader, device, out_dir)
+
+    
+    if resume_path != "":
+        checkpoint = torch.load(resume_path, map_location=device)
+        net.load_state_dict(checkpoint['net'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
+        start_epoch = checkpoint['epoch']
+        max_test_acc = checkpoint['max_test_acc']
+        
+    n_parameters = sum(p.numel() for p in net.parameters() if p.requires_grad)
+    print(f"number of params: {n_parameters}")
+
+    
+    # writer = SummaryWriter(out_dir)
 
     #Training
     for epoch in range(start_epoch, epochs):
@@ -214,8 +252,8 @@ def main():
         train_loss /= train_samples
         train_acc /= train_samples
 
-        writer.add_scalar('train_loss', train_loss, epoch)
-        writer.add_scalar('train_acc', train_acc, epoch)
+        # writer.add_scalar('train_loss', train_loss, epoch)
+        # writer.add_scalar('train_acc', train_acc, epoch)
         lr_scheduler.step()
 
         net.eval()
@@ -229,18 +267,19 @@ def main():
                 label = label.to(device)
                 label_onehot = F.one_hot(label, 10).float()
                 out_fr = net(img)
-                loss = F.mse_loss(out_fr, label_onehot)
+                loss = F.cross_entropy(out_fr, label_onehot)
 
                 test_samples += label.numel()
                 test_loss += loss.item() * label.numel()
                 test_acc += (out_fr.argmax(1) == label).float().sum().item()
                 functional.reset_net(net)
+                
             test_time = time.time()
             test_speed = test_samples / (test_time - train_time)
             test_loss /= test_samples
             test_acc /= test_samples
-            writer.add_scalar('test_loss', test_loss, epoch)
-            writer.add_scalar('test_acc', test_acc, epoch)
+            # writer.add_scalar('test_loss', test_loss, epoch)
+            # writer.add_scalar('test_acc', test_acc, epoch)
 
         save_max = False
         if test_acc > max_test_acc:
@@ -265,13 +304,13 @@ def main():
         print(f'escape time = {(datetime.datetime.now() + datetime.timedelta(seconds=(time.time() - start_time) * (epochs - epoch))).strftime("%Y-%m-%d %H:%M:%S")}\n')
     
     
-    #Save the trained model
-    if not os.path.exists('result'):
-        os.makedirs('result')
-    fdir = 'result/'
-    if not os.path.exists(fdir):
-        os.makedirs(fdir)
-    save_checkpoint({'state_dict': net.state_dict(),}, 0, fdir, len(net.state_dict()))
+    # #Save the trained model
+    # if not os.path.exists('result'):
+    #     os.makedirs('result')
+    # fdir = 'result/'
+    # if not os.path.exists(fdir):
+    #     os.makedirs(fdir)
+    # save_checkpoint({'state_dict': net.state_dict(),}, 0, fdir, len(net.state_dict()))
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1:])

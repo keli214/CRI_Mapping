@@ -117,7 +117,7 @@ def main():
     train_loader = DataLoader(mnist_train, batch_size=batch_size, shuffle=True, drop_last=True)
     test_loader = DataLoader(mnist_test, batch_size=batch_size, shuffle=True, drop_last=True)
     
-    best_model_path = '/home/keli/code/CRI_Mapping/result/model_spikingjelly_14_s.pth.tar'
+    best_model_path = '/home/keli/code/CRI_Mapping/result/model_spikingjelly_39_s.pth.tar'
     checkpoint = torch.load(best_model_path, map_location=device)
     print(checkpoint['state_dict'].keys())
     net_1 = CSNN(T = T, channels = channels, use_cupy=False)
@@ -136,7 +136,7 @@ def main():
     net_quan.to(device)
     validate(net_quan, test_loader, device, out_dir)
     
-    cri_convert = CRI_Converter(4, 0, 11, np.array(( 1, 28, 28)),'spikingjelly', int(quan_fun.v_threshold)) # num_steps, input_layer, output_layer, input_size
+    cri_convert = CRI_Converter(4, 0, 11, np.array(( 3, 32, 32)),'spikingjelly', int(quan_fun.v_threshold)) # num_steps, input_layer, output_layer, input_size
     cri_convert.layer_converter(net_quan)
     
     config = {}

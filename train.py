@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 # This is a slightly modified version of timm's training script
 """ Spikformer ImageNet Testing Script
+
 This is intended to be a lean and easily modifiable ImageNet training script that reproduces ImageNet
 training results with some of the latest networks and training techniques. It favours canonical PyTorch
 and standard Python style over trying to be able to 'do it all.' That said, it offers quite a few speed
 and training result improvements over the usual PyTorch example scripts. Repurpose as you see fit.
+
 This script was started from an early version of the PyTorch ImageNet example
 (https://github.com/pytorch/examples/tree/master/imagenet)
+
 NVIDIA CUDA specific speedups adopted from NVIDIA Apex examples
 (https://github.com/NVIDIA/apex/tree/master/examples/imagenet)
+
 Hacked together by / Copyright 2020 Ross Wightman (https://github.com/rwightman)
 """
 import argparse
@@ -35,13 +39,7 @@ from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy, JsdCro
 from timm.optim import create_optimizer_v2, optimizer_kwargs
 from timm.scheduler import create_scheduler
 from timm.utils import ApexScaler, NativeScaler
-from model import Spikformer
 import model
-from tqdm import tqdm, trange
-from cri_converter import BN_Folder, Quantize_Network, CRI_Converter
-from torchsummary import summary
-from torch.utils.tensorboard import SummaryWriter
-from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 try:
     from apex import amp
     from apex.parallel import DistributedDataParallel as ApexDDP
@@ -65,13 +63,12 @@ try:
 except ImportError:
     has_wandb = False
 
-
 torch.backends.cudnn.benchmark = True
 _logger = logging.getLogger('train')
 # The first arg parser parses out only the --config argument, this argument is used to
 # load a yaml file containing key-values that override the defaults for the main parser below
 config_parser = parser = argparse.ArgumentParser(description='Training Config', add_help=False)
-parser.add_argument('-c', '--config', default='/Volumes/export/isn/keli/code/CRI/CRI_Mapping/cifar10.yml', type=str, metavar='FILE',
+parser.add_argument('-c', '--config', default='cifar10.yml', type=str, metavar='FILE',
                     help='YAML config file specifying default arguments')
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
@@ -99,7 +96,7 @@ parser.add_argument('--patch-size', type=int, default=None, metavar='N',
 parser.add_argument('--mlp-ratio', type=int, default=None, metavar='N',
                     help='expand ration of embedding dimension in MLP block')
 # Dataset / Model parameters
-parser.add_argument('-data-dir',metavar='DIR',default="/Volumes/export/isn/keli/code/data",
+parser.add_argument('-data-dir', metavar='DIR',default="/home/zhou/Compact-Transformers-main/cifar-10-python/",
                     help='path to dataset')
 parser.add_argument('--dataset', '-d', metavar='NAME', default='torch/cifar10',
                     help='dataset type (default: ImageFolder/ImageTar if empty)')
@@ -303,120 +300,6 @@ parser.add_argument('--torchscript', dest='torchscript', action='store_true',
 parser.add_argument('--log-wandb', action='store_true', default=False,
                     help='log training and validation metrics to wandb')
 
-def weight_histograms_conv2d(writer, step, weights, layer_name):
-    weights_shape = weights.shape
-    num_kernels = weights_shape[0]
-    for k in range(num_kernels):
-        # weight_min = min(weights[k].flatten())
-        # weight_max = max(weights[k].flatten())
-        weight_range = abs(max(weights[k].flatten()) - min(weights[k].flatten()))
-        
-        flattened_weights = weights[k].flatten()
-        tag = f"layer_{layer_name}/kernel_{k} Range_{weight_range}"
-        # tag = f"layer_{layer_name}/kernel_{k} min: {weight_min}, max: {weight_max}"
-        writer.add_histogram(tag, flattened_weights, global_step=step, bins='tensorflow')
-
-
-def weight_histograms_linear(writer, step, weights, layer_name):
-    flattened_weights = weights.flatten()
-    # weight_min = min(weights.flatten())
-    # weight_max = max(weights.flatten())
-    weight_range = abs(max(weights.flatten()) - min(weights.flatten()))
-    tag = f"layer_{layer_name} Range_{weight_range}"
-    # tag = f"layer_{layer_name} min: {weight_min}, max: {weight_max}"
-    writer.add_histogram(tag, flattened_weights, global_step=step, bins='tensorflow')
-
-
-def weight_histograms(writer, step, model, layer_number):
-    print("Visualizing model weights...")
-    module_names = list(model._modules)
-    for k, name in enumerate(module_names):
-        if len(list(model._modules[name]._modules)) > 0 and not isinstance(model._modules[name], MultiStepLIFNode) and name == 'patch_embed':
-             weight_histograms(writer,step,model._modules[name], layer_number + 1)
-        else:
-            layer = model._modules[name]
-            # Compute weight histograms for appropriate layer
-            if isinstance(layer, nn.Conv2d):
-                weights = layer.weight
-                weight_histograms_conv2d(writer, step, weights, name)
-            elif isinstance(layer, nn.Linear):
-                weights = layer.weight
-                weight_histograms_linear(writer, step, weights, name)
-
-def save_checkpoint(state, is_quan, fdir, num_layer):
-    filepath = os.path.join(fdir, 'checkpoint.pth')
-    torch.save(state, filepath)
-    if is_quan:
-        shutil.copyfile(filepath, os.path.join(fdir, f'model_spikingjelly_quan_{num_layer}.pth.tar'))
-    else:
-        shutil.copyfile(filepath, os.path.join(fdir, f'model_spikingjelly_{num_layer}.pth.tar'))
-
-def validate(model, loader, loss_fn, args, amp_autocast=suppress, log_suffix=''):
-    batch_time_m = AverageMeter()
-    losses_m = AverageMeter()
-    top1_m = AverageMeter()
-    top5_m = AverageMeter()
-
-    model.eval()
-
-    end = time.time()
-    last_idx = len(loader) - 1
-    with torch.no_grad():
-        for batch_idx, (input, target) in enumerate(loader):
-            last_batch = batch_idx == last_idx
-            if not args.prefetcher:
-                input = input.cuda()
-                target = target.cuda()
-            if args.channels_last:
-                input = input.contiguous(memory_format=torch.channels_last)
-
-            with amp_autocast():
-                output = model(input)
-            if isinstance(output, (tuple, list)):
-                output = output[0]
-
-            # augmentation reduction
-            reduce_factor = args.tta
-            if reduce_factor > 1:
-                output = output.unfold(0, reduce_factor, reduce_factor).mean(dim=2)
-                target = target[0:target.size(0):reduce_factor]
-            loss = loss_fn(output, target)
-            functional.reset_net(model)
-
-            acc1, acc5 = accuracy(output, target, topk=(1, 5))
-
-            if args.distributed:
-                reduced_loss = reduce_tensor(loss.data, args.world_size)
-                acc1 = reduce_tensor(acc1, args.world_size)
-                acc5 = reduce_tensor(acc5, args.world_size)
-            else:
-                reduced_loss = loss.data
-
-            torch.cuda.synchronize()
-
-            losses_m.update(reduced_loss.item(), input.size(0))
-            top1_m.update(acc1.item(), output.size(0))
-            top5_m.update(acc5.item(), output.size(0))
-
-            batch_time_m.update(time.time() - end)
-            end = time.time()
-            # if args.local_rank == 0 and (last_batch or batch_idx % args.log_interval == 0):
-            log_name = 'Test' + log_suffix
-            _logger.info(
-                '{0}: [{1:>4d}/{2}]  '
-                'Time: {batch_time.val:.3f} ({batch_time.avg:.3f})  '
-                'Loss: {loss.val:>7.4f} ({loss.avg:>6.4f})  '
-                'Acc@1: {top1.val:>7.4f} ({top1.avg:>7.4f})  '
-                'Acc@5: {top5.val:>7.4f} ({top5.avg:>7.4f})'.format(
-                    log_name, batch_idx, last_idx, batch_time=batch_time_m,
-                    loss=losses_m, top1=top1_m, top5=top5_m))
-            
-            break #only running one batch
-
-    metrics = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
-
-    return metrics
-
 
 def _parse_args():
     # Do we have a config file to parse?
@@ -439,34 +322,68 @@ def main():
     setup_default_logging()
     args, args_text = _parse_args()
 
-    # if args.log_wandb:
-    #     if has_wandb:
-    #         wandb.init(project=args.experiment, config=args)
-    #     else:
-    #         _logger.warning("You've requested to log metrics to wandb but package not found. "
-    #                         "Metrics not being logged to wandb, try `pip install wandb`")
+    if args.log_wandb:
+        if has_wandb:
+            wandb.init(project=args.experiment, config=args)
+        else:
+            _logger.warning("You've requested to log metrics to wandb but package not found. "
+                            "Metrics not being logged to wandb, try `pip install wandb`")
 
     args.prefetcher = not args.no_prefetcher
     args.distributed = False
-
-    args.device = 'cuda'
+    if 'WORLD_SIZE' in os.environ:
+        args.distributed = int(os.environ['WORLD_SIZE']) > 1
+    args.device = 'cuda:1'
     args.world_size = 1
     args.rank = 0  # global rank
+    if args.distributed:
+        args.device = 'cuda:%d' % args.local_rank
+        torch.cuda.set_device(args.local_rank)
+        torch.distributed.init_process_group(backend='nccl', init_method='env://')
+        args.world_size = torch.distributed.get_world_size()
+        args.rank = torch.distributed.get_rank()
+        _logger.info('Training in distributed mode with multiple processes, 1 GPU per process. Process %d, total %d.'
+                     % (args.rank, args.world_size))
+    else:
+        _logger.info('Training with a single process on 1 GPUs.')
+    assert args.rank >= 0
+
+    # resolve AMP arguments based on PyTorch / Apex availability
+    use_amp = None
+    if args.amp:
+        # `--amp` chooses native amp before apex (APEX ver not actively maintained)
+        if has_native_amp:
+            args.native_amp = True
+        elif has_apex:
+            args.apex_amp = True
+    if args.apex_amp and has_apex:
+        use_amp = 'apex'
+    elif args.native_amp and has_native_amp:
+        use_amp = 'native'
+    elif args.apex_amp or args.native_amp:
+        _logger.warning("Neither APEX or native Torch AMP is available, using float32. "
+                        "Install NVIDA apex or upgrade to PyTorch 1.6")
 
     random_seed(args.seed, args.rank)
-    model = Spikformer(
-        img_size_h=32, img_size_w=32,
-        patch_size=4, embed_dims=384, num_heads=12, mlp_ratios=4,
-        in_channels=3, num_classes=10, qkv_bias=False,
-        depths=4, sr_ratios=1,
+    model = create_model(
+        'spikformer',
+        pretrained=False,
+        drop_rate=0.,
+        drop_path_rate=0.,
+        drop_block_rate=None,
+        img_size_h=args.img_size, img_size_w=args.img_size,
+        patch_size=args.patch_size, embed_dims=args.dim, num_heads=args.num_heads, mlp_ratios=args.mlp_ratio,
+        in_channels=3, num_classes=args.num_classes, qkv_bias=False,
+        depths=args.layer, sr_ratios=1,
+        T=args.time_step
     )
-    
-    n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"number of params: {n_parameters}")
-    
     print("Creating model")
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"number of params: {n_parameters}")
+
+    if args.num_classes is None:
+        assert hasattr(model, 'num_classes'), 'Model must have `num_classes` attr if not set on cmd line/config.'
+        args.num_classes = model.num_classes  # FIXME handle model default vs config num_classes more elegantly
 
     if args.local_rank == 0:
         _logger.info(
@@ -474,20 +391,132 @@ def main():
 
     data_config = resolve_data_config(vars(args), model=model, verbose=args.local_rank == 0)
 
+    # setup augmentation batch splits for contrastive loss or split bn
     num_aug_splits = 0
-    
-    dataset_train = create_dataset(args.dataset,root=args.data_dir, split=args.train_split, is_training=True,batch_size=args.batch_size, repeats=args.epoch_repeats, download = False)
-    dataset_eval = create_dataset(args.dataset,root=args.data_dir, split=args.val_split, is_training=False, batch_size=args.batch_size, download = False)
+    if args.aug_splits > 0:
+        assert args.aug_splits > 1, 'A split of 1 makes no sense'
+        num_aug_splits = args.aug_splits
+
+    # enable split bn (separate bn stats per batch-portion)
+    if args.split_bn:
+        assert num_aug_splits > 1 or args.resplit
+        model = convert_splitbn_model(model, max(num_aug_splits, 2))
+
+    # move model to GPU, enable channels last layout if set
+    model.cuda()
+    if args.channels_last:
+        model = model.to(memory_format=torch.channels_last)
+
+    # setup synchronized BatchNorm for distributed training
+    if args.distributed and args.sync_bn:
+        assert not args.split_bn
+        if has_apex and use_amp != 'native':
+            # Apex SyncBN preferred unless native amp is activated
+            model = convert_syncbn_model(model)
+        else:
+            model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+        if args.local_rank == 0:
+            _logger.info(
+                'Converted model to use Synchronized BatchNorm. WARNING: You may have issues if using '
+                'zero initialized BN layers (enabled by default for ResNets) while sync-bn enabled.')
+
+    if args.torchscript:
+        assert not use_amp == 'apex', 'Cannot use APEX AMP with torchscripted model'
+        assert not args.sync_bn, 'Cannot use SyncBatchNorm with torchscripted model'
+        model = torch.jit.script(model)
+
+    optimizer = create_optimizer_v2(model, **optimizer_kwargs(cfg=args))
+
+    # setup automatic mixed-precision (AMP) loss scaling and op casting
+    amp_autocast = suppress  # do nothing
+    loss_scaler = None
+    if use_amp == 'apex':
+        model, optimizer = amp.initialize(model, optimizer, opt_level='O1')
+        loss_scaler = ApexScaler()
+        if args.local_rank == 0:
+            _logger.info('Using NVIDIA APEX AMP. Training in mixed precision.')
+    elif use_amp == 'native':
+        amp_autocast = torch.cuda.amp.autocast
+        loss_scaler = NativeScaler()
+        if args.local_rank == 0:
+            _logger.info('Using native Torch AMP. Training in mixed precision.')
+    else:
+        if args.local_rank == 0:
+            _logger.info('AMP not enabled. Training in float32.')
+
+    # optionally resume from a checkpoint
+    resume_epoch = None
+    if args.resume:
+        resume_epoch = resume_checkpoint(
+            model, args.resume,
+            optimizer=None if args.no_resume_opt else optimizer,
+            loss_scaler=None if args.no_resume_opt else loss_scaler,
+            log_info=args.local_rank == 0)
+
+    # setup exponential moving average of model weights, SWA could be used here too
+    model_ema = None
+    if args.model_ema:
+        # Important to create EMA model after cuda(), DP wrapper, and AMP but before SyncBN and DDP wrapper
+        model_ema = ModelEmaV2(
+            model, decay=args.model_ema_decay, device='cpu' if args.model_ema_force_cpu else None)
+        if args.resume:
+            load_checkpoint(model_ema.module, args.resume, use_ema=True)
+
+    # setup distributed training
+    # setup distributed training
+    if args.distributed:
+        if has_apex and use_amp != 'native':
+            # Apex DDP preferred unless native amp is activated
+            if args.local_rank == 0:
+                _logger.info("Using NVIDIA APEX DistributedDataParallel.")
+            model = ApexDDP(model, delay_allreduce=True)
+        else:
+            if args.local_rank == 0:
+                _logger.info("Using native Torch DistributedDataParallel.")
+            model = NativeDDP(model, device_ids=[args.local_rank],find_unused_parameters=True)  # can use device str in Torch >= 1.1
+        # NOTE: EMA model does not need to be wrapped by DDP
+
+    # setup learning rate schedule and starting epoch
+    lr_scheduler, num_epochs = create_scheduler(args, optimizer)
+    start_epoch = 0
+    if args.start_epoch is not None:
+        # a specified start_epoch will always override the resume epoch
+        start_epoch = args.start_epoch
+    elif resume_epoch is not None:
+        start_epoch = resume_epoch
+    if lr_scheduler is not None and start_epoch > 0:
+        lr_scheduler.step(start_epoch)
+
+    if args.local_rank == 0:
+        _logger.info('Scheduled epochs: {}'.format(num_epochs))
+
+    # create the train and eval datasets
+    dataset_train = create_dataset(
+        args.dataset,
+        root=args.data_dir, split=args.train_split, is_training=True,
+        batch_size=args.batch_size, repeats=args.epoch_repeats)
+    dataset_eval = create_dataset(
+        args.dataset, root=args.data_dir, split=args.val_split, is_training=False, batch_size=args.batch_size)
 
     # setup mixup / cutmix
     collate_fn = None
     mixup_fn = None
     mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
+    if mixup_active:
+        mixup_args = dict(
+            mixup_alpha=args.mixup, cutmix_alpha=args.cutmix, cutmix_minmax=args.cutmix_minmax,
+            prob=args.mixup_prob, switch_prob=args.mixup_switch_prob, mode=args.mixup_mode,
+            label_smoothing=args.smoothing, num_classes=args.num_classes)
+        if args.prefetcher:
+            assert not num_aug_splits  # collate conflict (need to support deinterleaving in collate mixup)
+            collate_fn = FastCollateMixup(**mixup_args)
+        else:
+            mixup_fn = Mixup(**mixup_args)
 
-    #Load the checkpoint into model 
-    checkpoint_path = "/Volumes/export/isn/gopa/CRI_proj/cri_spikeformer/cifar10/output/train/20230301-194515-spikformer-32/checkpoint-307.pth.tar"
-    model.load_state_dict(torch.load(checkpoint_path,map_location=args.device)['state_dict'])
-    
+    # wrap dataset in AugMix helper
+    if num_aug_splits > 1:
+        dataset_train = AugMixDataset(dataset_train, num_splits=num_aug_splits)
+
     # create data loaders w/ augmentation pipeiine
     train_interpolation = args.train_interpolation
     if args.no_aug or not train_interpolation:
@@ -517,7 +546,7 @@ def main():
         distributed=args.distributed,
         collate_fn=collate_fn,
         pin_memory=args.pin_mem,
-        use_multi_epochs_loader=args.use_multi_epochs_loader,
+        use_multi_epochs_loader=args.use_multi_epochs_loader
     )
 
     loader_eval = create_loader(
@@ -534,64 +563,264 @@ def main():
         crop_pct=data_config['crop_pct'],
         pin_memory=args.pin_mem,
     )
-    
-    bn = BN_Folder()  #Fold the BN layer 
-    bn_model = bn.fold(model.eval())
-    
-    # summary(model)
-    # summary(bn_model)
-    
-    # writer = SummaryWriter('runs/transformer/bn_model')
-    # weight_histograms(writer, 0, bn_model, 0)
 
-    quan_fun = Quantize_Network(w_alpha = 5, dynamic_alpha = False) # weight_quantization
-    quan_model = quan_fun.quantize(bn_model)
-    
-    # if not os.path.exists('result/transformer'):
-    # os.makedirs('result/transformer')
-    # fdir = 'result/transformer'
-    # if not os.path.exists(fdir):
-    #     os.makedirs(fdir)
-    # save_checkpoint({'state_dict': quan_model.state_dict(),}, 1, fdir, len(quan_model.state_dict()))    
-    
-    
-    # writer = SummaryWriter('runs/transformer/quan_model')
-    # weight_histograms(writer, 0, quan_model, 0)
-    
-    # summary(quan_model)
-    
-    # print(model.patch_embed.proj_lif)
-    # print(quan_model.patch_embed.proj_lif)
-    # print(quan_model.block[0].attn.q_lif)
-    
-    quan_model.cuda() # move model to GPU, enable channels last layout if set
-    # print("After quan_model cuda memory: ", torch.cuda.memory_allocated())
-    # if args.channels_last:
-    #     quan_model = quan_model.to(memory_format=torch.channels_last)
-    # print("After quan_model threshold: ", quan_fun.v_threshold)
-    
-    validate_loss_fn = nn.CrossEntropyLoss().cuda() # Valid accuracy
-    validate(quan_model, loader_eval, validate_loss_fn, args)   
-    
-    
-    # cri_converter = CRI_Converter(4, 0, 100, (3,32,32), 'spikingjelly', quan_fun.v_threshold)
-    # cri_converter.layer_converter(quan_model)
-    
-#     model.cuda() # move model to GPU, enable channels last layout if set
-#     if args.channels_last:
-#         model = model.to(memory_format=torch.channels_last)
-#     print("After quan_model: ", torch.cuda.memory_allocated())
-    
-#     validate_loss_fn = nn.CrossEntropyLoss().cuda() # Valid accuracy
-#     validate(model, loader_eval, validate_loss_fn, args)     
-    
-   
-    
-    # print(quan_model.patch_embed.proj_lif)
-    
-    return 
-  
+    # setup loss function
+    if args.jsd:
+        assert num_aug_splits > 1  # JSD only valid with aug splits set
+        train_loss_fn = JsdCrossEntropy(num_splits=num_aug_splits, smoothing=args.smoothing).cuda()
+    elif mixup_active:
+        # smoothing is handled with mixup target transform
+        train_loss_fn = SoftTargetCrossEntropy().cuda()
+    elif args.smoothing:
+        train_loss_fn = LabelSmoothingCrossEntropy(smoothing=args.smoothing).cuda()
+    else:
+        train_loss_fn = nn.CrossEntropyLoss().cuda()
+    validate_loss_fn = nn.CrossEntropyLoss().cuda()
+
+    # setup checkpoint saver and eval metric tracking
+    eval_metric = args.eval_metric
+    best_metric = None
+    best_epoch = None
+    saver = None
+    output_dir = None
+    if args.rank == 0:
+        if args.experiment:
+            exp_name = args.experiment
+        else:
+            exp_name = '-'.join([
+                datetime.now().strftime("%Y%m%d-%H%M%S"),
+                safe_model_name(args.model),
+                str(data_config['input_size'][-1])
+            ])
+        output_dir = get_outdir(args.output if args.output else './output/train', exp_name)
+        decreasing = True if eval_metric == 'loss' else False
+        saver = CheckpointSaver(
+            model=model, optimizer=optimizer, args=args, model_ema=model_ema, amp_scaler=loss_scaler,
+            checkpoint_dir=output_dir, recovery_dir=output_dir, decreasing=decreasing, max_history=args.checkpoint_hist)
+        with open(os.path.join(output_dir, 'args.yaml'), 'w') as f:
+            f.write(args_text)
+
+    try:
+        for epoch in range(start_epoch, num_epochs):
+            if args.distributed and hasattr(loader_train.sampler, 'set_epoch'):
+                loader_train.sampler.set_epoch(epoch)
+
+            train_metrics = train_one_epoch(
+                epoch, model, loader_train, optimizer, train_loss_fn, args,
+                lr_scheduler=lr_scheduler, saver=saver, output_dir=output_dir,
+                amp_autocast=amp_autocast, loss_scaler=loss_scaler, model_ema=model_ema, mixup_fn=mixup_fn)
+
+            if args.distributed and args.dist_bn in ('broadcast', 'reduce'):
+                if args.local_rank == 0:
+                    _logger.info("Distributing BatchNorm running means and vars")
+                distribute_bn(model, args.world_size, args.dist_bn == 'reduce')
+
+            eval_metrics = validate(model, loader_eval, validate_loss_fn, args, amp_autocast=amp_autocast)
+
+            if model_ema is not None and not args.model_ema_force_cpu:
+                if args.distributed and args.dist_bn in ('broadcast', 'reduce'):
+                    distribute_bn(model_ema, args.world_size, args.dist_bn == 'reduce')
+                ema_eval_metrics = validate(
+                    model_ema.module, loader_eval, validate_loss_fn, args, amp_autocast=amp_autocast,
+                    log_suffix=' (EMA)')
+                eval_metrics = ema_eval_metrics
+
+            if lr_scheduler is not None:
+                # step LR for next epoch
+                lr_scheduler.step(epoch + 1, eval_metrics[eval_metric])
+
+            if output_dir is not None:
+                update_summary(
+                    epoch, train_metrics, eval_metrics, os.path.join(output_dir, 'summary.csv'),
+                    write_header=best_metric is None, log_wandb=args.log_wandb and has_wandb)
+
+            if saver is not None:
+                # save proper checkpoint with eval metric
+                save_metric = eval_metrics[eval_metric]
+                best_metric, best_epoch = saver.save_checkpoint(epoch, metric=save_metric)
+                _logger.info('*** Best metric: {0} (epoch {1})'.format(best_metric, best_epoch))
+
+    except KeyboardInterrupt:
+        pass
+    if best_metric is not None:
+        _logger.info('*** Best metric: {0} (epoch {1})'.format(best_metric, best_epoch))
+
+
+def train_one_epoch(
+        epoch, model, loader, optimizer, loss_fn, args,
+        lr_scheduler=None, saver=None, output_dir=None, amp_autocast=suppress,
+        loss_scaler=None, model_ema=None, mixup_fn=None):
+    if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
+        if args.prefetcher and loader.mixup_enabled:
+            loader.mixup_enabled = False
+        elif mixup_fn is not None:
+            mixup_fn.mixup_enabled = False
+
+    second_order = hasattr(optimizer, 'is_second_order') and optimizer.is_second_order
+    batch_time_m = AverageMeter()
+    data_time_m = AverageMeter()
+    losses_m = AverageMeter()
+
+    model.train()
+
+    end = time.time()
+    last_idx = len(loader) - 1
+    num_updates = epoch * len(loader)
+    for batch_idx, (input, target) in enumerate(loader):
+        last_batch = batch_idx == last_idx
+        data_time_m.update(time.time() - end)
+        if not args.prefetcher:
+            input, target = input.cuda(), target.cuda()
+            if mixup_fn is not None:
+                input, target = mixup_fn(input, target)
+        if args.channels_last:
+            input = input.contiguous(memory_format=torch.channels_last)
+
+        with amp_autocast():
+            output = model(input)
+            loss = loss_fn(output, target)
+
+        if not args.distributed:
+            losses_m.update(loss.item(), input.size(0))
+
+        optimizer.zero_grad()
+        if loss_scaler is not None:
+            loss_scaler(
+                loss, optimizer,
+                clip_grad=args.clip_grad, clip_mode=args.clip_mode,
+                parameters=model_parameters(model, exclude_head='agc' in args.clip_mode),
+                create_graph=second_order)
+        else:
+            # loss.backward()
+            loss.backward(create_graph=second_order)
+            if args.clip_grad is not None:
+                dispatch_clip_grad(
+                    model_parameters(model, exclude_head='agc' in args.clip_mode),
+                    value=args.clip_grad, mode=args.clip_mode)
+            optimizer.step()
+
+        functional.reset_net(model)
+
+        if model_ema is not None:
+            model_ema.update(model)
+
+        torch.cuda.synchronize()
+        num_updates += 1
+        batch_time_m.update(time.time() - end)
+        if last_batch or batch_idx % args.log_interval == 0:
+            lrl = [param_group['lr'] for param_group in optimizer.param_groups]
+            lr = sum(lrl) / len(lrl)
+
+            if args.distributed:
+                reduced_loss = reduce_tensor(loss.data, args.world_size)
+                losses_m.update(reduced_loss.item(), input.size(0))
+
+            if args.local_rank == 0:
+                _logger.info(
+                    'Train: {} [{:>4d}/{} ({:>3.0f}%)]  '
+                    'Loss: {loss.val:>9.6f} ({loss.avg:>6.4f})  '
+                    'Time: {batch_time.val:.3f}s, {rate:>7.2f}/s  '
+                    '({batch_time.avg:.3f}s, {rate_avg:>7.2f}/s)  '
+                    'LR: {lr:.3e}  '
+                    'Data: {data_time.val:.3f} ({data_time.avg:.3f})'.format(
+                        epoch,
+                        batch_idx, len(loader),
+                        100. * batch_idx / last_idx,
+                        loss=losses_m,
+                        batch_time=batch_time_m,
+                        rate=input.size(0) * args.world_size / batch_time_m.val,
+                        rate_avg=input.size(0) * args.world_size / batch_time_m.avg,
+                        lr=lr,
+                        data_time=data_time_m))
+
+                if args.save_images and output_dir:
+                    torchvision.utils.save_image(
+                        input,
+                        os.path.join(output_dir, 'train-batch-%d.jpg' % batch_idx),
+                        padding=0,
+                        normalize=True)
+
+        if saver is not None and args.recovery_interval and (
+                last_batch or (batch_idx + 1) % args.recovery_interval == 0):
+            saver.save_recovery(epoch, batch_idx=batch_idx)
+
+        if lr_scheduler is not None:
+            lr_scheduler.step_update(num_updates=num_updates, metric=losses_m.avg)
+
+        end = time.time()
+        # end for
+
+    if hasattr(optimizer, 'sync_lookahead'):
+        optimizer.sync_lookahead()
+
+    return OrderedDict([('loss', losses_m.avg)])
+
+
+def validate(model, loader, loss_fn, args, amp_autocast=suppress, log_suffix=''):
+    batch_time_m = AverageMeter()
+    losses_m = AverageMeter()
+    top1_m = AverageMeter()
+    top5_m = AverageMeter()
+
+    model.eval()
+
+    end = time.time()
+    last_idx = len(loader) - 1
+    with torch.no_grad():
+        for batch_idx, (input, target) in enumerate(loader):
+            last_batch = batch_idx == last_idx
+            # if not args.prefetcher:
+                input = input.cuda()
+                target = target.cuda()
+            if args.channels_last: #order tensors in memory preserving dimensions
+                input = input.contiguous(memory_format=torch.channels_last)
+
+            with amp_autocast(): #automatic mixed percision calculation
+                output = model(input)
+            if isinstance(output, (tuple, list)):
+                output = output[0]
+
+            # augmentation reduction
+            reduce_factor = args.tta
+            if reduce_factor > 1:
+                output = output.unfold(0, reduce_factor, reduce_factor).mean(dim=2)
+                target = target[0:target.size(0):reduce_factor]
+
+            loss = loss_fn(output, target)
+            functional.reset_net(model)
+
+            acc1, acc5 = accuracy(output, target, topk=(1, 5))
+
+            if args.distributed:
+                reduced_loss = reduce_tensor(loss.data, args.world_size)
+                acc1 = reduce_tensor(acc1, args.world_size)
+                acc5 = reduce_tensor(acc5, args.world_size)
+            else:
+                reduced_loss = loss.data
+
+            torch.cuda.synchronize()
+
+            losses_m.update(reduced_loss.item(), input.size(0))
+            top1_m.update(acc1.item(), output.size(0))
+            top5_m.update(acc5.item(), output.size(0))
+
+            batch_time_m.update(time.time() - end)
+            end = time.time()
+            if args.local_rank == 0 and (last_batch or batch_idx % args.log_interval == 0):
+                log_name = 'Test' + log_suffix
+                _logger.info(
+                    '{0}: [{1:>4d}/{2}]  '
+                    'Time: {batch_time.val:.3f} ({batch_time.avg:.3f})  '
+                    'Loss: {loss.val:>7.4f} ({loss.avg:>6.4f})  '
+                    'Acc@1: {top1.val:>7.4f} ({top1.avg:>7.4f})  '
+                    'Acc@5: {top5.val:>7.4f} ({top5.avg:>7.4f})'.format(
+                        log_name, batch_idx, last_idx, batch_time=batch_time_m,
+                        loss=losses_m, top1=top1_m, top5=top5_m))
+
+    metrics = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
+
+    return metrics
+
+
 if __name__ == '__main__':
     main()
-
-
