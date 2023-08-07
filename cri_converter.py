@@ -282,7 +282,7 @@ class CRI_Converter():
         return batch
     
     '''Input converter for maxpool testing only
-    Given an converted img ouput, return a list of input axons ignore 
+        Given an converted img ouput, return a list of input axons ignore 
     '''
     def intput_converter_maxPool(self, input_data):
         current_input = input_data.view(input_data.size(0), -1)
@@ -297,9 +297,11 @@ class CRI_Converter():
         
         module_names = list(model._modules)
         
-        #TODO: Construct the axon dict here
+        #TODO: Remove incrementing the axon_offset in the layer converter functions
         axons = np.array(['a' + str(i) for i in range(np.prod(self.input_shape))]).reshape(self.input_shape)
         self.curr_input = axons
+        self.axon_offset += np.prod(self.curr_input.shape)
+        
         
         for k, name in enumerate(module_names):
             if len(list(model._modules[name]._modules)) > 0 and not isSNNLayer(model._modules[name]):
@@ -327,19 +329,23 @@ class CRI_Converter():
         # elif isinstance(layer, sl.SparseLinear): #disabled for crisp since I couldn't install sl on crisp
         #     self._sparse_converter(layer)
     
-        # elif isinstance(layer,  MultiStepLIFNode):
-        #     if name == 'attn_lif':
-        #         self._attention_converter(layer)
-        
+        elif isSNNLayer(layer):
+            if name == 'attn_lif':
+                self._attention_converter(layer)
         else:
             pass
             # print("Unconvertered layer: ", layer)
         self.layer_index += 1
     
+    """ Given a SSA block, the converter loop through all layers in the block.
+        It converts SSA block into HiAER-Spike format by calling the corresponding 
+        layer converter based on the layer itself.
+    
+    """
     def _attention_converter(self, model):
         print(f"Convert attention layer")
-        #Flatten the current_input matrix to N*D (D = self.embed_dim, N = H*W)
-        self.curr_input = np.transpose(self.curr_input.reshape(self.curr_input.shape[-2]*self.curr_input.shape[-1], self.embed_dim))#Hardcode for now 
+        # #Flatten the current_input matrix to N*D (D = self.embed_dim, N = H*W)
+        # self.curr_input = np.transpose(self.curr_input.reshape(self.curr_input.shape[-2]*self.curr_input.shape[-1], self.embed_dim))#Hardcode for now 
         
         module_names = list(model._modules)
         for k, name in enumerate(module_names):
@@ -358,9 +364,14 @@ class CRI_Converter():
             self.layer_index += 1
         self.curr_input = np.transpose(self.curr_input)
                     
+    """ Given an attention layer, the function creates neurons and axons by calling _attention_linear_weight. 
+        It returns the output neurons to be stored for the proceeding 
+        matrix multiplication layers in SSA models.
+    """
     def _attention_linear_converter(self, layer):
-        print(f'Input layer shape(infeature, outfeature): {self.curr_input.shape} {self.curr_input.shape}')
-        output_shape = self.curr_input.shape
+        
+        output_shape = layer.out_features
+            
         output = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + np.prod(output_shape))]).reshape(output_shape)
         weights = layer.weight.detach().cpu().numpy()
         for n in range(self.curr_input.shape[0]):
@@ -374,6 +385,7 @@ class CRI_Converter():
             self._cri_bias(layer, output, atten_flag=True)
             self.axon_offset = len(self.axon_dict)
         return output.transpose(-2,-1)
+        
     
     """ Given two matrix, maps the matrix multiplication a@b into CRI neurons connections
     
