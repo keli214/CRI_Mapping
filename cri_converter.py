@@ -369,10 +369,11 @@ class CRI_Converter():
                 elif name == 'proj_linear':
                     self.curr_input = self._attention_linear_converter(model._modules[name])
             elif name == 'attn_lif':
-                self._matrix_mul_cri(self.q, self.v.transpose)
+                self._matrix_mul_cri(self.q, np.transpose(self.v))
                 self._matrix_mul_cri(self.curr_input, self.k)
             self.layer_index += 1
-        self.curr_input = np.transpose(self.curr_input)
+        # Do we need transpose here
+        # self.curr_input = np.transpose(self.curr_input)
                     
     """ Given an attention layer, the function creates neurons and axons 
         by calling _attention_linear_weight. 
@@ -382,29 +383,33 @@ class CRI_Converter():
     def _attention_linear_converter(self, layer):
         
         print(f'Input layer shape(infeature, outfeature):\
-               {self.curr_input.shape} {self.curr_input.shape}')
-        
-        output_shape = self.curr_input.shape
-        output = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + np.prod(output_shape))]).reshape(output_shape)
+               {self.curr_input.shape} {layer.out_features}')
+        breakpoint()
+        output_shape = (1,32,32) #hardcoded for testing
+        output = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + np.prod(output_shape))])
         
         weights = layer.weight.detach().cpu().numpy()
         
-        for n in range(self.curr_input.shape[0]):
-            # print(self.curr_input[d], weights)
-            for neuron_idx, neuron in enumerate(self.curr_input[n,:]):
-                self.neuron_dict[neuron].extend([(output[n, neuron_idx], int(weight)) for idx, weight in enumerate(weights[n])])
-                # # For SSA testing only
-                # self.axon_dict[neuron].extend([(output[n, neuron_idx], int(weight)) for idx, weight in enumerate(weights[n])])
+        # for n in range(self.curr_input.shape[0]):
+        #     # print(self.curr_input[d], weights)
+        #     for neuron_idx, neuron in enumerate(self.curr_input[n,:]):
+                # self.neuron_dict[neuron].extend([(output[n, neuron_idx], int(weight)) for idx, weight in enumerate(weights[n])])
+        
+        # For SSA testing only
+        for neuron in self.curr_input.flatten():       
+            self.axon_dict[neuron].append([(output[idx], weight) for idx, weight in enumerate(weights)])
 
-        self.neuron_offset += np.prod(output_shape)
-        print(f'curr_neuron_offset: {self.neuron_offset}')
+        
+        # self.neuron_offset += np.prod(output_shape)
+        # print(f'curr_neuron_offset: {self.neuron_offset}')
         
         if layer.bias is not None and self.layer_index != self.output_layer:
             print(f'Constructing {layer.bias.shape[0]} bias axons for hidden linear layer')
             self._cri_bias(layer, output, atten_flag=True)
             self.axon_offset = len(self.axon_dict)
         
-        return output.transpose(-2,-1)
+        output = output.reshape(output_shape)
+        return output
 
     
     # """ Given two matrix, maps the matrix multiplication a@b into CRI neurons connections
@@ -709,10 +714,7 @@ class CRI_Converter():
             if isinstance(layer, nn.Conv2d):
                 self.axon_dict[bias_id] = [(str(neuron_idx),int(bias)) for neuron_idx in outputs[bias_idx].flatten()]
             elif isinstance(layer, nn.Linear):
-                if atten_flag:
-                    self.axon_dict[bias_id] = [(str(neuron_idx),int(bias)) for neuron_idx in outputs[bias_idx,:].flatten()]
-                else:   
-                    self.axon_dict[bias_id] = [(str(outputs[bias_idx]),int(bias))]
+                self.axon_dict[bias_id] = [(str(outputs[bias_idx]),int(bias))]
             else:
                 print(f'Unspported layer: {layer}')
     

@@ -111,7 +111,7 @@ def main():
                                 4) # embed_dim
     print(net_quan)
     cri_convert._attention_converter(net_quan)
-    breakpoint()
+
 #     cri_convert._cri_fanout()
 #     # print(cri_convert.maxPool_axon)
 #     # print(cri_convert.maxPool_neuron)
