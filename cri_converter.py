@@ -252,6 +252,10 @@ class CRI_Converter():
         #For maxpool testing only
         self.maxPool_axon = defaultdict(list)
         self.maxPool_neuron = defaultdict(list)
+
+        #For matrix multiplication testing only
+        self.matrix_axon = defaultdict(list)
+        self.matrix_neuron = defaultdict(list)
     
     '''Given an img, encode it into spikes and then convert it to axons lists
     '''
@@ -302,6 +306,7 @@ class CRI_Converter():
         self.curr_input = axons
         self.axon_offset += np.prod(self.curr_input.shape)
         
+        breakpoint()
         
         for k, name in enumerate(module_names):
             if len(list(model._modules[name]._modules)) > 0 and not isSNNLayer(model._modules[name]):
@@ -347,6 +352,11 @@ class CRI_Converter():
         # #Flatten the current_input matrix to N*D (D = self.embed_dim, N = H*W)
         # self.curr_input = np.transpose(self.curr_input.reshape(self.curr_input.shape[-2]*self.curr_input.shape[-1], self.embed_dim))#Hardcode for now 
         
+        # For SSA testing only
+        axons = np.array(['a' + str(i) for i in range(np.prod(self.input_shape))]).reshape(self.input_shape)
+        self.curr_input = axons
+        self.axon_offset += np.prod(self.curr_input.shape)
+
         module_names = list(model._modules)
         for k, name in enumerate(module_names):
             if not isSNNLayer(model._modules[name]):
@@ -359,76 +369,150 @@ class CRI_Converter():
                 elif name == 'proj_linear':
                     self.curr_input = self._attention_linear_converter(model._modules[name])
             elif name == 'attn_lif':
-                self._matrix_mul_cri(self.q, self.v)
+                self._matrix_mul_cri(self.q, self.v.transpose)
                 self._matrix_mul_cri(self.curr_input, self.k)
             self.layer_index += 1
         self.curr_input = np.transpose(self.curr_input)
                     
-    """ Given an attention layer, the function creates neurons and axons by calling _attention_linear_weight. 
+    """ Given an attention layer, the function creates neurons and axons 
+        by calling _attention_linear_weight. 
         It returns the output neurons to be stored for the proceeding 
         matrix multiplication layers in SSA models.
     """
     def _attention_linear_converter(self, layer):
         
-        output_shape = layer.out_features
-            
+        print(f'Input layer shape(infeature, outfeature):\
+               {self.curr_input.shape} {self.curr_input.shape}')
+        
+        output_shape = self.curr_input.shape
         output = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + np.prod(output_shape))]).reshape(output_shape)
+        
         weights = layer.weight.detach().cpu().numpy()
+        
         for n in range(self.curr_input.shape[0]):
             # print(self.curr_input[d], weights)
             for neuron_idx, neuron in enumerate(self.curr_input[n,:]):
                 self.neuron_dict[neuron].extend([(output[n, neuron_idx], int(weight)) for idx, weight in enumerate(weights[n])])
+                # # For SSA testing only
+                # self.axon_dict[neuron].extend([(output[n, neuron_idx], int(weight)) for idx, weight in enumerate(weights[n])])
+
         self.neuron_offset += np.prod(output_shape)
         print(f'curr_neuron_offset: {self.neuron_offset}')
+        
         if layer.bias is not None and self.layer_index != self.output_layer:
             print(f'Constructing {layer.bias.shape[0]} bias axons for hidden linear layer')
             self._cri_bias(layer, output, atten_flag=True)
             self.axon_offset = len(self.axon_dict)
-        return output.transpose(-2,-1)
         
+        return output.transpose(-2,-1)
+
     
-    """ Given two matrix, maps the matrix multiplication a@b into CRI neurons connections
+    # """ Given two matrix, maps the matrix multiplication a@b into CRI neurons connections
+    
+    # Args:
+    #     a: a np array of strings with T*N*D neuron names
+    #     b: a np array of strings with T*N*D neuron names
+        
+    # """
+    # def _matrix_mul_cri(self, x, y):
+    #     #TODO: parallelize each time step 
+    #     print(f"x.shape: {x.shape}")
+    #     h, w = x.shape
+        
+    #     _, d = y.shape
+    #     x_flatten = x.flatten() # (h*w)
+    #     y_flatten = y.transpose().flatten() #(d*w)
+        
+    #     first_layer = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + h*w*d)])
+    #     # first_layer = first_layer.reshape(h*w*d)
+    #     self.neuron_offset += h*w*d
+        
+    #     second_layer = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + h*d)])
+    #     # second_layer = second_layer.reshape(b, h*d)
+    #     self.neuron_offset += h*d
+        
+    #     for idx, neuron in enumerate(x_flatten):
+    #         for i in range(d):
+    #             # print(f"idx%w + w*i + w*d*(idx//w): {idx%w + w*i + w*d*(idx//w)}")
+    #             self.neuron_dict[neuron].extend([(first_layer[idx%w + w*i + w*d*(idx//w)], self.v_threshold)])
+        
+    #     for idx, neuron in enumerate(y_flatten):
+    #         for i in range(h):
+    #             # print(f"idx%(w*d): {idx%(w*d)}")
+    #             self.neuron_dict[neuron].append([(first_layer[idx%(w*d)], self.v_threshold)])
+        
+    #     # for r in tqdm(range(b)):
+    #     for idx, neuron in enumerate(first_layer):
+    #         # print(f"idx//w: {idx//w}")
+    #         self.neuron_dict[neuron].extend((second_layer[idx//w], self.v_threshold))
+        
+    #     second_layer = second_layer.reshape(h,d)
+    #     # print(f'outputshape: {self.curr_input.shape}')
+    #     self.curr_input = second_layer
+    
+    """ Testing method for matrix multiplication in HiAER Spike
     
     Args:
         a: a np array of strings with T*N*D neuron names
         b: a np array of strings with T*N*D neuron names
-        
+        test: flag for testing mode
     """
-    def _matrix_mul_cri(self, x, y):
-        #TODO: parallelize each time step 
+    def _matrix_mul_cri_testing(self, x, y, test):
+
         print(f"x.shape: {x.shape}")
         h, w = x.shape
-        
         _, d = y.shape
-        x_flatten = x.flatten() # (h*w)
-        y_flatten = y.transpose().flatten() #(d*w)
+
+        # x_flatten = x.flatten() # (h*w)
+        # y_flatten = y.transpose().flatten() #(d*w)
         
+        #Creating the first layer of dummy neurons of the shape (h, w, d)
         first_layer = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + h*w*d)])
-        # first_layer = first_layer.reshape(h*w*d)
+        first_layer = first_layer.reshape(h,w,d)
         self.neuron_offset += h*w*d
         
+        #Creating the output layer of the matrix multiplication
         second_layer = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + h*d)])
-        # second_layer = second_layer.reshape(b, h*d)
-        self.neuron_offset += h*d
-        
-        for idx, neuron in enumerate(x_flatten):
-            for i in range(d):
-                # print(f"idx%w + w*i + w*d*(idx//w): {idx%w + w*i + w*d*(idx//w)}")
-                self.neuron_dict[neuron].extend([(first_layer[idx%w + w*i + w*d*(idx//w)], self.v_threshold)])
-        for idx, neuron in enumerate(y_flatten):
-            for i in range(h):
-                # print(f"idx%(w*d): {idx%(w*d)}")
-                self.neuron_dict[neuron].append([(first_layer[idx%(w*d)], self.v_threshold)])
-        
-        # for r in tqdm(range(b)):
-        for idx, neuron in enumerate(first_layer):
-            # print(f"idx//w: {idx//w}")
-            self.neuron_dict[neuron].extend((second_layer[idx//w], self.v_threshold))
-        
         second_layer = second_layer.reshape(h,d)
+        self.neuron_offset += h*d
+
+        #Generates the synapses between input x and the first layer of dummy neurons
+        for rowIdx, row in enumerate(x):
+            for idx, neuron in enumerate(row):
+                # print(f"idx%w + w*i + w*d*(idx//w): {idx%w + w*i + w*d*(idx//w)}")
+                self.neuron_dict[neuron].append([(first_layer[rowIdx, idx, i], \
+                                                  self.v_threshold/2) for i in range(d)])
+                if test == 1:
+                    self.matrix_axon[neuron].append([(first_layer[rowIdx, idx, i], \
+                                                  self.v_threshold/2) for i in range(d)])
+                if test == 2:
+                    self.matrix_neuron[neuron].append([(first_layer[rowIdx, idx, i], \
+                                                  self.v_threshold/2) for i in range(d)])
+                    
+        #Generates the synapses between input y and the first layer of dummy neurons
+        for rowIdx, row in enumerate(y):
+            for idx, neuron in enumerate(row):
+                # print(f"idx%(w*d): {idx%(w*d)}")
+                self.neuron_dict[neuron].append([(first_layer[i, rowIdx, idx], \
+                                                  self.v_threshold/2) for i in range(h)])
+                if test != 0:
+                    self.matrix_axon[neuron].append([(first_layer[i, rowIdx, idx], \
+                                                  self.v_threshold/2) for i in range(h)])
+        
+        #Generates the synapses between first layer of dummy neurons and output neurons
+        for rowIdx, row in enumerate(first_layer):
+            for idx, neuron in enumerate(row):
+                # print(f"idx//w: {idx//w}")
+                self.neuron_dict[neuron].extend((second_layer[rowIdx, idx%d], \
+                                                  self.v_threshold))
+                if test != 0:
+                    self.matrix_neuron[neuron].extend((second_layer[rowIdx, idx%d], \
+                                                  self.v_threshold))
+        
         # print(f'outputshape: {self.curr_input.shape}')
         self.curr_input = second_layer
-        
+
+
     def _sparse_converter(self, layer):
         input_shape = layer.in_features
         output_shape = layer.out_features

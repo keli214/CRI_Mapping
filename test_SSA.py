@@ -16,7 +16,7 @@ from cri_converter import CRI_Converter
 from bn_folder import BN_Folder
 from torchsummary import summary
 from hs_api.api import CRI_network
-import hs_bridge
+#import hs_bridge
 from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 from utils import train, validate, run_CRI_hw
 from models import SSA
@@ -29,8 +29,8 @@ parser.add_argument('--resume_path', default='', type=str, help='checkpoint file
 parser.add_argument('--load_path', default='', type=str, help='checkpoint loading path')
 parser.add_argument('--train', action='store_true', default=False, help='Train the network from stratch')
 parser.add_argument('-b','--batch_size', default=32, type=int)
-parser.add_argument('--data_path', default='/Volumes/export/isn/keli/code/data', type=str, help='path to dataset')
-parser.add_argument('--out_dir', default='/Volumes/export/isn/keli/code/HS/CRI_Mapping/runs/ssa', type=str, help='dir path that stores the trained model checkpoint')
+parser.add_argument('--data_path', default='C:\\Users\\KeliWang\\CRI_Mapping\\data', type=str, help='path to dataset')
+parser.add_argument('--out_dir', default='C:\\Users\\KeliWang\\CRI_Mapping\\runs\\ssa', type=str, help='dir path that stores the trained model checkpoint')
 parser.add_argument('--epochs', default=10, type=int)
 parser.add_argument('--lr', default=1e-3, type=float)
 parser.add_argument('-m','--momentum', default=0.9, type=float)
@@ -79,7 +79,7 @@ def main():
     net.to(device)
     n_parameters = sum(p.numel() for p in net.parameters() if p.requires_grad)
     print(f"number of params: {n_parameters}")
-    print(net)
+    # print(net)
     
     if args.resume_path != "" or args.train:
         print('Start Training')
@@ -93,18 +93,25 @@ def main():
         # validate(args, net_1, test_loader, device)
   
     
-#     bn = BN_Folder()  #Fold the BN layer 
-#     net_bn = bn.fold(net.eval())
-#     # validate(args, net_bn, test_loader, device)
+    bn = BN_Folder()  #Fold the BN layer 
+    net_bn = bn.fold(net.eval())
+    # validate(args, net_bn, test_loader, device)
     
-#     quan_fun = Quantize_Network(w_alpha = 3,dynamic_alpha = False) # weight_quantization
-#     net_quan = quan_fun.quantize(net_bn)
-#     # validate(args, net_bn, test_loader, device)
-#     # print(net_quan.attn.attn_lif.v_threshold)
+    quan_fun = Quantize_Network(w_alpha = 3,dynamic_alpha = False) # weight_quantization
+    net_quan = quan_fun.quantize(net_bn)
+    # validate(args, net_bn, test_loader, device)
+    # print(net_quan.attn.attn_lif.v_threshold)
     
-#     cri_convert = CRI_Converter(args.num_steps, 3, 3, (1, 28, 28),'spikingjelly', int(quan_fun.v_threshold), 4) # num_steps, input_layer, output_layer, input_size, backend, v_threshold, embed_dim
-#     print(net_quan)
-#     cri_convert.layer_converter(net_quan)
+    cri_convert = CRI_Converter(args.num_steps, # num_steps
+                                0, # input_layer
+                                8, # output_layer
+                                (1, 28, 28), # input_size
+                                'spikingjelly', # backend
+                                int(quan_fun.v_threshold), # v_threshold
+                                4) # embed_dim
+    print(net_quan)
+    cri_convert._attention_converter(net_quan)
+    breakpoint()
 #     cri_convert._cri_fanout()
 #     # print(cri_convert.maxPool_axon)
 #     # print(cri_convert.maxPool_neuron)
