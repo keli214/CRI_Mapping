@@ -369,8 +369,8 @@ class CRI_Converter():
                 elif name == 'proj_linear':
                     self.curr_input = self._attention_linear_converter(model._modules[name])
             elif name == 'attn_lif':
-                self._matrix_mul_cri(self.q, np.transpose(self.v))
-                self._matrix_mul_cri(self.curr_input, self.k)
+                self._matrix_mul_cri_testing(self.q, np.transpose(self.v, (0,2,1)), 1)
+                self._matrix_mul_cri_testing(self.curr_input, self.k, 2)
             self.layer_index += 1
         # Do we need transpose here
         # self.curr_input = np.transpose(self.curr_input)
@@ -465,8 +465,9 @@ class CRI_Converter():
     def _matrix_mul_cri_testing(self, x, y, test):
 
         print(f"x.shape: {x.shape}")
-        h, w = x.shape
-        _, d = y.shape
+        _, h, w = x.shape
+        _, _, d = y.shape
+        breakpoint()
 
         # x_flatten = x.flatten() # (h*w)
         # y_flatten = y.transpose().flatten() #(d*w)
@@ -485,6 +486,7 @@ class CRI_Converter():
         for rowIdx, row in enumerate(x):
             for idx, neuron in enumerate(row):
                 # print(f"idx%w + w*i + w*d*(idx//w): {idx%w + w*i + w*d*(idx//w)}")
+                breakpoint()
                 self.neuron_dict[neuron].append([(first_layer[rowIdx, idx, i], \
                                                   self.v_threshold/2) for i in range(d)])
                 if test == 1:
