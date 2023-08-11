@@ -317,3 +317,32 @@ class SSA(nn.Module):
         x = self.proj_lif(self.proj_linear(x))
         
         return x
+
+    def forward_qkv(self, x):
+        B,C,H,W = x.shape 
+        x_for_qkv = x.flatten(2,3)  # B, C, H*W
+        q_linear_out = self.q_linear(x_for_qkv)  
+        q = self.q_lif(q_linear_out).reshape(B,C,self.dim,self.dim)
+       
+        k_linear_out = self.k_linear(x_for_qkv)
+        k = self.k_lif(k_linear_out).reshape(B,C,self.dim,self.dim)
+
+        v_linear_out = self.v_linear(x_for_qkv)
+        v = self.v_lif(v_linear_out).reshape(B,C,self.dim,self.dim)
+
+        return q,k,v
+    
+    def forward_mul(self,x):
+        B,C,H,W = x.shape 
+        x_for_qkv = x.flatten(2,3)  # B, C, H*W
+        q_linear_out = self.q_linear(x_for_qkv)  
+        q = self.q_lif(q_linear_out).reshape(B,C,self.dim,self.dim)
+       
+        k_linear_out = self.k_linear(x_for_qkv)
+        k = self.k_lif(k_linear_out).reshape(B,C,self.dim,self.dim)
+
+        v_linear_out = self.v_linear(x_for_qkv)
+        v = self.v_lif(v_linear_out).reshape(B,C,self.dim,self.dim)
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        x = attn @ v
+        return x.reshape(B,C,self.dim,self.dim).contiguous()

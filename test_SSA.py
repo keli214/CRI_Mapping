@@ -71,8 +71,8 @@ def main():
     
     # Initialize SnnTorch/SpikingJelly model
     net = SSA()
-    # net_test = CNN_MaxPool()
-    # net_maxPool = CNN_MaxPool()
+    net_test = SSA()
+    net_mul = SSA()
     
     
     # print(net_1)
@@ -101,119 +101,122 @@ def main():
     net_quan = quan_fun.quantize(net_bn)
     # validate(args, net_bn, test_loader, device)
     # print(net_quan.attn.attn_lif.v_threshold)
+
+    threshold_offset = 1
     
     cri_convert = CRI_Converter(args.num_steps, # num_steps
                                 0, # input_layer
                                 8, # output_layer
                                 (1, 28, 28), # input_size
                                 'spikingjelly', # backend
-                                int(quan_fun.v_threshold), # v_threshold
+                                int(quan_fun.v_threshold) + threshold_offset , # v_threshold
                                 4) # embed_dim
+    
     print(net_quan)
     cri_convert._attention_converter(net_quan)
     breakpoint()
 
-#     cri_convert._cri_fanout()
-#     # print(cri_convert.maxPool_axon)
-#     # print(cri_convert.maxPool_neuron)
+    cri_convert._cri_fanout()
     
-#     config= {}
-#     config['neuron_type'] = "ANN" #memoryless neurons
-#     config['global_neuron_params'] = {}
-#     config['global_neuron_params']['v_thr'] = int(quan_fun.v_threshold)
+    
+    config= {}
+    config['neuron_type'] = "ANN" #memoryless neurons
+    config['global_neuron_params'] = {}
+    config['global_neuron_params']['v_thr'] = int(quan_fun.v_threshold)
 
     
-#     hardwareNetwork, softwareNetwork = None, None
-#     if args.hardware:
-#         hardwareNetwork = CRI_network(dict(cri_convert.maxPool_axon),
-#                                       connections=dict(cri_convert.maxPool_neuron),
-#                                       config=config,target='CRI', 
-#                                       outputs =list(cri_convert.maxPool_neuron.keys()),
-#                                       coreID=1, 
-#                                       perturbMag=8,#Zero randomness  
-#                                       leak=2**6)#IF
-#     else:
-#         softwareNetwork = CRI_network(dict(cri_convert.maxPool_axon),
-#                                       connections=dict(cri_convert.maxPool_neuron),
-#                                       config=config,target='simpleSim', 
-#                                       outputs = list(cri_convert.maxPool_neuron.keys()),
-#                                       coreID=1, 
-#                                       perturbMag=8, #Zero randomness  
-#                                       leak=2**6)#IF
+    hardwareNetwork, softwareNetwork = None, None
+    if args.hardware:
+        hardwareNetwork = CRI_network(dict(cri_convert.mul_axon),
+                                      connections=dict(cri_convert.mul_neuron),
+                                      config=config,target='CRI', 
+                                      outputs =list(cri_convert.mul_output),
+                                      coreID=1, 
+                                      perturbMag=8,#Zero randomness  
+                                      leak=2**6)#IF
+    else:
+        softwareNetwork = CRI_network(dict(cri_convert.mul_axon),
+                                      connections=dict(cri_convert.mul_neuron),
+                                      config=config,target='simpleSim', 
+                                      outputs = list(cri_convert.mul_output),
+                                      coreID=1, 
+                                      perturbMag=8, #Zero randomness  
+                                      leak=2**6)#IF
 
-#     cri_convert.bias_start_idx = 0 #add this to the end of conversion
-#     loss_fun = nn.MSELoss()
-#     start_time = time.time()
-#     test_loss = 0
-#     test_acc = 0
-#     test_loss_cri = 0
-#     test_acc_cri = 0
-#     test_samples = 0
-#     num_batches = 0
-#     encoder = encoding.PoissonEncoder()
-#     for img, label in tqdm(test_loader):
-#         img = img.to(device) #one batch
-#         label = label.to(device)
-#         label_onehot = F.one_hot(label, 10).float()
-#         out_fr = 0.
-#         out_cri = 0.
-#         for t in range(args.num_steps):
-#             encoded_img = encoder(img)
-#             out_fr += net(encoded_img)
+    cri_convert.bias_start_idx = 0 #add this to the end of conversion
+    loss_fun = nn.MSELoss()
+    start_time = time.time()
+    test_loss = 0
+    test_acc = 0
+    test_loss_cri = 0
+    test_acc_cri = 0
+    test_samples = 0
+    num_batches = 0
+    encoder = encoding.PoissonEncoder()
+    for img, label in tqdm(test_loader):
+        img = img.to(device) #one batch
+        label = label.to(device)
+        label_onehot = F.one_hot(label, 10).float()
+        out_fr = 0.
+        out_cri = 0.
+        for t in range(args.num_steps):
+            encoded_img = encoder(img)
+            out_fr += net(encoded_img)
             
             
-#             conv_img = net_test.forward_first(encoded_img)
-#             cri_input = cri_convert.intput_converter_maxPool(conv_img)
+            q,k,v = net_test.forward_qkv(encoded_img)
+            breakpoint()
+            cri_input = cri_convert.intput_converter_mul(q,k,v)
             
-#             if args.hardware:
-#                 cri_output = cri_convert.run_CRI_hw_testing(cri_input,softwareNetwork)
-#             else:
-#                 cri_output = cri_convert.run_CRI_sw_testing(cri_input,softwareNetwork)
+            if args.hardware:
+                cri_output = cri_convert.run_CRI_hw_testing(cri_input,softwareNetwork)
+            else:
+                cri_output = cri_convert.run_CRI_sw_testing(cri_input,softwareNetwork)
             
-#             spiking_maxPool = net_maxPool.forward_maxPool(encoded_img)
-#             # breakpoint()
-#             #reconstruct the output matrix from spike idices
-#             outputs = np.zeros(spiking_maxPool.size())
-#             for i, output_spikes in enumerate(cri_output):
-#                 for spike_idx in output_spikes:
-#                     j = spike_idx // (14*14)
-#                     r = (spike_idx%(14*14)) // 14
-#                     c = (spike_idx%(14*14)) % 14
-#                     outputs[i,j,r,c] = 1
-#             outputs = torch.tensor(outputs)
+            spiking_maxPool = net_mul.forward_maxPool(encoded_img)
+            # breakpoint()
+            #reconstruct the output matrix from spike idices
+            outputs = np.zeros(spiking_maxPool.size())
+            for i, output_spikes in enumerate(cri_output):
+                for spike_idx in output_spikes:
+                    j = spike_idx // (14*14)
+                    r = (spike_idx%(14*14)) // 14
+                    c = (spike_idx%(14*14)) % 14
+                    outputs[i,j,r,c] = 1
+            outputs = torch.tensor(outputs)
             
-#             #compare the maxPool outputs from cri with spkingjelly
-#             correct = (outputs == spiking_maxPool).float().sum().item()
+            #compare the maxPool outputs from cri with spkingjelly
+            correct = (outputs == spiking_maxPool).float().sum().item()
             
-#             #feed the maxPool output from cri into the net
-#             # breakpoint()
-#             out_cri += net_test.forward_second(outputs.float().to(device))
+            #feed the maxPool output from cri into the net
+            # breakpoint()
+            out_cri += net_test.forward_second(outputs.float().to(device))
             
-#         functional.reset_net(net)
-#         functional.reset_net(net_test)
-#         functional.reset_net(net_maxPool)
+        functional.reset_net(net)
+        functional.reset_net(net_test)
+        functional.reset_net(net_mul)
         
-#         out_fr = out_fr/args.num_steps
-#         out_cri = out_cri/args.num_steps
+        out_fr = out_fr/args.num_steps
+        out_cri = out_cri/args.num_steps
         
-#         loss = loss_fun(out_fr, label_onehot)
-#         test_samples += label.numel()
-#         test_loss += loss.item() * label.numel()
-#         test_acc += (out_fr.argmax(1) == label).float().sum().item()
+        loss = loss_fun(out_fr, label_onehot)
+        test_samples += label.numel()
+        test_loss += loss.item() * label.numel()
+        test_acc += (out_fr.argmax(1) == label).float().sum().item()
         
-#         loss_cri = loss_fun(out_cri, label_onehot)
-#         test_loss_cri += loss_cri.item() * label.numel()
-#         test_acc_cri += (out_cri.argmax(1) == label).float().sum().item()
+        loss_cri = loss_fun(out_cri, label_onehot)
+        test_loss_cri += loss_cri.item() * label.numel()
+        test_acc_cri += (out_cri.argmax(1) == label).float().sum().item()
         
-#         print(f'test_loss ={test_loss/test_samples: .4f}, test_acc ={test_acc/test_samples: .4f}')
-#         print(f'test_loss_cri ={test_loss_cri/test_samples: .4f}, test_acc_cri ={test_acc_cri/test_samples: .4f}')
+        print(f'test_loss ={test_loss/test_samples: .4f}, test_acc ={test_acc/test_samples: .4f}')
+        print(f'test_loss_cri ={test_loss_cri/test_samples: .4f}, test_acc_cri ={test_acc_cri/test_samples: .4f}')
         
-#     test_loss /= test_samples
-#     test_acc /= test_samples
-#     test_loss_cri /= test_samples
-#     test_acc_cri /= test_samples
+    test_loss /= test_samples
+    test_acc /= test_samples
+    test_loss_cri /= test_samples
+    test_acc_cri /= test_samples
     
-#     print(f'test_loss_cri ={test_loss_cri: .4f}, test_acc_cri ={test_acc_cri: .4f}')
+    print(f'test_loss_cri ={test_loss_cri: .4f}, test_acc_cri ={test_acc_cri: .4f}')
 
     
 if __name__ == '__main__':

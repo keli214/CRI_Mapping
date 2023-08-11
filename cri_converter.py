@@ -254,8 +254,9 @@ class CRI_Converter():
         self.maxPool_neuron = defaultdict(list)
 
         #For matrix multiplication testing only
-        self.matrix_axon = defaultdict(list)
-        self.matrix_neuron = defaultdict(list)
+        self.mul_axon = defaultdict(list)
+        self.mul_neuron = defaultdict(list)
+        self.mul_output = []
     
     '''Given an img, encode it into spikes and then convert it to axons lists
     '''
@@ -294,6 +295,14 @@ class CRI_Converter():
         for img in current_input:
             input_spike = ['a' + str(idx) for idx, axon in enumerate(img) if axon != 0]
             batch.append(input_spike)
+        return batch
+    
+    def input_converter_mul(self, q, k, v):
+        q_flat = q.view(q.size(0), -1)
+        k_flat = k.view(k.size(0), -1)
+        v_flat = v.view(v.size(0), -1)
+        batch = []
+        
         return batch
                 
     
@@ -384,7 +393,7 @@ class CRI_Converter():
         
         print(f'Input layer shape(infeature, outfeature):\
                {self.curr_input.shape} {layer.out_features}')
-        breakpoint()
+        # breakpoint()
         output_shape = (1,32,32) #hardcoded for testing
         output = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + np.prod(output_shape))])
         
@@ -465,59 +474,63 @@ class CRI_Converter():
     def _matrix_mul_cri_testing(self, x, y, test):
 
         print(f"x.shape: {x.shape}")
-        _, h, w = x.shape
+        c, h, w = x.shape
         _, _, d = y.shape
-        breakpoint()
+        # breakpoint()
 
         # x_flatten = x.flatten() # (h*w)
         # y_flatten = y.transpose().flatten() #(d*w)
         
         #Creating the first layer of dummy neurons of the shape (h, w, d)
-        first_layer = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + h*w*d)])
-        first_layer = first_layer.reshape(h,w,d)
-        self.neuron_offset += h*w*d
+        first_layer = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + c*h*w*d)])
+        first_layer = first_layer.reshape(c,h,w,d)
+        self.neuron_offset += c*h*w*d
         
         #Creating the output layer of the matrix multiplication
-        second_layer = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + h*d)])
-        second_layer = second_layer.reshape(h,d)
-        self.neuron_offset += h*d
+        second_layer = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + c*h*d)])
+        second_layer = second_layer.reshape(c,h,d)
+        self.neuron_offset += c*h*d
 
         #Generates the synapses between input x and the first layer of dummy neurons
-        for rowIdx, row in enumerate(x):
-            for idx, neuron in enumerate(row):
-                # print(f"idx%w + w*i + w*d*(idx//w): {idx%w + w*i + w*d*(idx//w)}")
-                breakpoint()
-                self.neuron_dict[neuron].append([(first_layer[rowIdx, idx, i], \
-                                                  self.v_threshold/2) for i in range(d)])
-                if test == 1:
-                    self.matrix_axon[neuron].append([(first_layer[rowIdx, idx, i], \
-                                                  self.v_threshold/2) for i in range(d)])
-                if test == 2:
-                    self.matrix_neuron[neuron].append([(first_layer[rowIdx, idx, i], \
-                                                  self.v_threshold/2) for i in range(d)])
+        for chanIdx, channel in enumerate(x):
+            for rowIdx, row in enumerate(channel):
+                for idx, neuron in enumerate(row):
+                    # print(f"idx%w + w*i + w*d*(idx//w): {idx%w + w*i + w*d*(idx//w)}")
+                    # breakpoint()
+                    self.neuron_dict[neuron].append([(first_layer[chanIdx, rowIdx, idx, i], \
+                                                    self.v_threshold/2) for i in range(d)])
+                    if test == 1:
+                        self.mul_axon[neuron].append([(first_layer[chanIdx, rowIdx, idx, i], \
+                                                    self.v_threshold/2) for i in range(d)])
+                    if test == 2:
+                        self.mul_neuron[neuron].append([(first_layer[chanIdx, rowIdx, idx, i], \
+                                                    self.v_threshold/2) for i in range(d)])
                     
         #Generates the synapses between input y and the first layer of dummy neurons
-        for rowIdx, row in enumerate(y):
-            for idx, neuron in enumerate(row):
-                # print(f"idx%(w*d): {idx%(w*d)}")
-                self.neuron_dict[neuron].append([(first_layer[i, rowIdx, idx], \
-                                                  self.v_threshold/2) for i in range(h)])
-                if test != 0:
-                    self.matrix_axon[neuron].append([(first_layer[i, rowIdx, idx], \
-                                                  self.v_threshold/2) for i in range(h)])
+        for chanIdx, channel in enumerate(y):
+            for rowIdx, row in enumerate(channel):
+                for idx, neuron in enumerate(row):
+                    # print(f"idx%(w*d): {idx%(w*d)}")
+                    self.neuron_dict[neuron].append([(first_layer[chanIdx, i, rowIdx, idx], \
+                                                    self.v_threshold/2) for i in range(h)])
+                    if test != 0:
+                        self.mul_axon[neuron].append([(first_layer[chanIdx, i, rowIdx, idx], \
+                                                    self.v_threshold/2) for i in range(h)])
         
         #Generates the synapses between first layer of dummy neurons and output neurons
-        for rowIdx, row in enumerate(first_layer):
-            for idx, neuron in enumerate(row):
-                # print(f"idx//w: {idx//w}")
-                self.neuron_dict[neuron].extend((second_layer[rowIdx, idx%d], \
-                                                  self.v_threshold))
-                if test != 0:
-                    self.matrix_neuron[neuron].extend((second_layer[rowIdx, idx%d], \
-                                                  self.v_threshold))
+        for chanIdx, channel in enumerate(first_layer):
+            for mIdx, matrix in enumerate(channel):
+                for rowIdx, row in enumerate(matrix):
+                    self.neuron_dict[neuron].append([(second_layer[chanIdx, mIdx, colIdx], \
+                                                    self.v_threshold) for colIdx, neuron in enumerate(row)]) 
+                    if test != 0:
+                        self.mul_neuron[neuron].extend([(second_layer[chanIdx, mIdx, colIdx], \
+                                                    self.v_threshold) for colIdx, neuron in enumerate(row)])
         
         # print(f'outputshape: {self.curr_input.shape}')
         self.curr_input = second_layer
+        if test == 2:
+            self.mul_output = second_layer.tolist()
 
 
     def _sparse_converter(self, layer):
