@@ -272,19 +272,20 @@ class SSA(nn.Module):
         self.inputDim = inputDim
         self.outputDim = outputDim
         self.scale = 0.125
-        self.q_linear = nn.Linear(self.inputDim* self.inputDim, self.dim*self.dim)
+        
+        self.q_linear = nn.Linear(self.inputDim* self.inputDim, self.dim*self.dim, bias = False)
         self.q_lif = neuron.IFNode(surrogate_function=surrogate.ATan())
 
-        self.k_linear = nn.Linear(self.inputDim* self.inputDim, self.dim*self.dim)
+        self.k_linear = nn.Linear(self.inputDim* self.inputDim, self.dim*self.dim, bias = False)
         self.k_lif = neuron.IFNode(surrogate_function=surrogate.ATan())
 
-        self.v_linear = nn.Linear(self.inputDim* self.inputDim, self.dim*self.dim)
+        self.v_linear = nn.Linear(self.inputDim* self.inputDim, self.dim*self.dim, bias = False)
         self.v_lif = neuron.IFNode(surrogate_function=surrogate.ATan())
         #Threshld should not be quantized for attn_lif
         self.attn_lif = neuron.IFNode(v_threshold = 0.5, surrogate_function=surrogate.ATan())
         
         self.flat = layer.Flatten()
-        self.proj_linear = nn.Linear(self.dim * self.dim, self.outputDim)
+        self.proj_linear = nn.Linear(self.dim * self.dim, self.outputDim, bias = False)
         self.proj_lif = neuron.IFNode(surrogate_function=surrogate.ATan())
 
     def forward(self, x):
@@ -310,7 +311,10 @@ class SSA(nn.Module):
         # breakpoint()
         attn = (q @ k.transpose(-2, -1)) * self.scale
         x = attn @ v
-        x = x.transpose(2,3).reshape(B,C,self.dim,self.dim).contiguous()
+        
+        # x = x.transpose(2,3).reshape(B,C,self.dim,self.dim).contiguous()
+        x = x.reshape(B,C,self.dim,self.dim)
+        
         x = self.attn_lif(x)
         
         x = self.flat(x)

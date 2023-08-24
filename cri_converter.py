@@ -378,8 +378,8 @@ class CRI_Converter():
                 elif name == 'proj_linear':
                     self.curr_input = self._attention_linear_converter(model._modules[name])
             elif name == 'attn_lif':
-                self._matrix_mul_cri_testing(self.q, np.transpose(self.v, (0,2,1)), 1)
-                self._matrix_mul_cri_testing(self.curr_input, self.k, 2)
+                self._matrix_mul_cri_testing(self.q, np.transpose(self.k, (0,2,1)), 1)
+                self._matrix_mul_cri_testing(self.curr_input, self.v, 2)
             self.layer_index += 1
         # Do we need transpose here
         # self.curr_input = np.transpose(self.curr_input)
@@ -395,6 +395,8 @@ class CRI_Converter():
                {self.curr_input.shape} {layer.out_features}')
         # breakpoint()
         output_shape = (1,32,32) #hardcoded for testing
+        
+        #flatten the layer 
         output = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + np.prod(output_shape))])
         
         weights = layer.weight.detach().cpu().numpy()
@@ -418,6 +420,7 @@ class CRI_Converter():
             self.axon_offset = len(self.axon_dict)
         
         output = output.reshape(output_shape)
+        self.neuron_offset += np.prod(output.shape)
         return output
 
     
@@ -469,7 +472,7 @@ class CRI_Converter():
     Args:
         a: a np array of strings with T*N*D neuron names
         b: a np array of strings with T*N*D neuron names
-        test: flag for testing mode
+        test: flag for testing mode, 0: not in testing, 1: qk, 2: kv 
     """
     def _matrix_mul_cri_testing(self, x, y, test):
 
@@ -495,42 +498,48 @@ class CRI_Converter():
         for chanIdx, channel in enumerate(x):
             for rowIdx, row in enumerate(channel):
                 for idx, neuron in enumerate(row):
-                    # print(f"idx%w + w*i + w*d*(idx//w): {idx%w + w*i + w*d*(idx//w)}")
+                    for i in range(d):
                     # breakpoint()
-                    self.neuron_dict[neuron].append([(first_layer[chanIdx, rowIdx, idx, i], \
-                                                    self.v_threshold/2) for i in range(d)])
-                    if test == 1:
-                        self.mul_axon[neuron].append([(first_layer[chanIdx, rowIdx, idx, i], \
-                                                    self.v_threshold/2) for i in range(d)])
-                    if test == 2:
-                        self.mul_neuron[neuron].append([(first_layer[chanIdx, rowIdx, idx, i], \
-                                                    self.v_threshold/2) for i in range(d)])
+                        self.neuron_dict[neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
+                                                        self.v_threshold/2))
+                        if test == 1:
+                            self.mul_axon[neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
+                                                        self.v_threshold/2))
+                        if test == 2:
+                            self.mul_neuron[neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
+                                                        self.v_threshold/2))
                     
         #Generates the synapses between input y and the first layer of dummy neurons
         for chanIdx, channel in enumerate(y):
             for rowIdx, row in enumerate(channel):
                 for idx, neuron in enumerate(row):
-                    # print(f"idx%(w*d): {idx%(w*d)}")
-                    self.neuron_dict[neuron].append([(first_layer[chanIdx, i, rowIdx, idx], \
-                                                    self.v_threshold/2) for i in range(h)])
-                    if test != 0:
-                        self.mul_axon[neuron].append([(first_layer[chanIdx, i, rowIdx, idx], \
-                                                    self.v_threshold/2) for i in range(h)])
+                    for i in range(h):
+                        self.neuron_dict[neuron].append((first_layer[chanIdx, i, rowIdx, idx], \
+                                                        self.v_threshold/2))
+                        if test != 0:
+                            self.mul_axon[neuron].append((first_layer[chanIdx, i, rowIdx, idx], \
+                                                        self.v_threshold/2))
+        
         
         #Generates the synapses between first layer of dummy neurons and output neurons
         for chanIdx, channel in enumerate(first_layer):
             for mIdx, matrix in enumerate(channel):
                 for rowIdx, row in enumerate(matrix):
-                    self.neuron_dict[neuron].append([(second_layer[chanIdx, mIdx, colIdx], \
-                                                    self.v_threshold) for colIdx, neuron in enumerate(row)]) 
-                    if test != 0:
-                        self.mul_neuron[neuron].extend([(second_layer[chanIdx, mIdx, colIdx], \
-                                                    self.v_threshold) for colIdx, neuron in enumerate(row)])
+                    for colIdx, neuron in enumerate(row):
+                        # breakpoint()
+                        self.neuron_dict[neuron].append((second_layer[chanIdx, mIdx, colIdx], \
+                                                    self.v_threshold))
+                        if test != 0:
+                            self.mul_neuron[neuron].append((second_layer[chanIdx, mIdx, colIdx], \
+                                                        self.v_threshold))
         
+        # breakpoint()
         # print(f'outputshape: {self.curr_input.shape}')
         self.curr_input = second_layer
         if test == 2:
-            self.mul_output = second_layer.tolist()
+            for output_neuron in second_layer.flatten():
+                self.mul_neuron[output_neuron] = []
+            self.mul_output = second_layer.flatten().tolist()
 
 
     def _sparse_converter(self, layer):
@@ -772,6 +781,23 @@ class CRI_Converter():
             self.total_neuronSyn += len(self.neuron_dict[key])
             if len(self.neuron_dict[key]) > self.max_fan:
                 self.max_fan = len(self.neuron_dict[key])
+        print("Total number of connections between hidden and output layers: ", self.total_neuronSyn)
+        print("Max fan out of neuron: ", self.max_fan)
+        
+    def _cri_fanout_test(self):
+        for key in self.mul_axon.keys():
+            self.total_axonSyn += len(self.mul_axon[key])
+            if len(self.mul_axon[key]) > self.max_fan:
+                self.max_fan = len(self.mul_axon[key])
+        print("Total number of connections between axon and neuron: ", self.total_axonSyn)
+        print("Max fan out of axon: ", self.max_fan)
+        print('---')
+        print("Number of neurons: ", len(self.mul_neuron))
+        self.max_fan = 0
+        for key in self.mul_neuron.keys():
+            self.total_neuronSyn += len(self.mul_neuron[key])
+            if len(self.mul_neuron[key]) > self.max_fan:
+                self.max_fan = len(self.mul_neuron[key])
         print("Total number of connections between hidden and output layers: ", self.total_neuronSyn)
         print("Max fan out of neuron: ", self.max_fan)
     
