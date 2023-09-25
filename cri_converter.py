@@ -233,7 +233,8 @@ class CRI_Converter():
         self.neuron_offset = 0
         self.backend = backend
         self.save_input = False
-        self.bias_start_idx = None
+        self.bias_start_idx = 0
+        self.output_start_idx = 0
         self.curr_input = None
         self.input_layer = input_layer
         self.output_layer = output_layer
@@ -547,6 +548,8 @@ class CRI_Converter():
         # print(f'outputshape: {self.curr_input.shape}')
         self.curr_input = second_layer
         if test == 2:
+            breakpoint()
+            self.output_start_idx = int(second_layer.flatten()[0])
             for output_neuron in second_layer.flatten():
                 self.mul_neuron[output_neuron] = []
             self.mul_output = second_layer.flatten().tolist()
@@ -893,14 +896,14 @@ class CRI_Converter():
         for currInput in tqdm(inputList):
            
             swSpike = hardwareNetwork.step(currInput, membranePotential=False)
-            spikeIdx1 = [int(spike) - self.bias_start_idx for spike in swSpike]
+            spikeIdx1 = [int(spike) - self.output_start_idx for spike in swSpike]
             # Empty input for output delay
             swSpike = hardwareNetwork.step([], membranePotential=False)
-            spikeIdx2 = [int(spike) - self.bias_start_idx for spike in swSpike]
+            spikeIdx2 = [int(spike) - self.output_start_idx for spike in swSpike]
             # breakpoint()
             # Additional empty input for phase delay since the network is only 2 layers
             swSpike = hardwareNetwork.step([], membranePotential=False)
-            spikeIdx3 = [int(spike) - self.bias_start_idx for spike in swSpike] 
+            spikeIdx3 = [int(spike) - self.output_start_idx for spike in swSpike] 
             output.append(spikeIdx1+spikeIdx2+spikeIdx3)    
         return output 
     
