@@ -306,10 +306,10 @@ class CRI_Converter():
         offset = 0
         
         for i in range(3):
-            # breakpoint()
+            breakpoint()
             input_spike = np.array([['a' + str(idx + offset) for idx, axon in enumerate(b) if axon != 0] for b in inputs[i]])
-            batch.append(input_spike.flatten())
-            offset += inputs[i].shape[0]
+            batch.extend(input_spike.flatten())
+            offset += inputs[i].shape[1]
 
         return batch
                 
