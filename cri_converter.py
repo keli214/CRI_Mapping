@@ -297,19 +297,20 @@ class CRI_Converter():
             batch.append(input_spike)
         return batch
     
+    '''Convert the q,k,v output from spikingjelly network 
+    into spikes input for multiplication testing'''
     def input_converter_mul(self, q, k, v):
-        q_flat = q.view(q.size(0), -1)
-        k_flat = k.view(k.size(0), -1)
-        v_flat = v.view(v.size(0), -1)
-        inputs = [q_flat, k_flat, v_flat]
+        inputs = [q, k, v]
         batch = []
-        offset = 0
         
-        for i in range(3):
-            breakpoint()
-            input_spike = np.array([['a' + str(idx + offset) for idx, axon in enumerate(b) if axon != 0] for b in inputs[i]])
-            batch.extend(input_spike.flatten())
-            offset += inputs[i].shape[1]
+        for b in range(q.shape[0]):
+            input_spike = []
+            offset = 0
+            for i in range(len(inputs)):
+                spikes = ['a' + str(idx + offset) for idx, axon in enumerate(inputs[i][b]) if axon != 0]
+                input_spike.extend(spikes)
+                offset += np.prod(inputs[i][b])
+            batch.append(input_spike)
 
         return batch
                 
