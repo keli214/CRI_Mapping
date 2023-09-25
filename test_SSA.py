@@ -176,7 +176,8 @@ def main():
                 cri_output = cri_convert.run_CRI_sw_testing(cri_input,softwareNetwork)
             
             spiking_mul = net_mul.forward_mul(encoded_img)
-            breakpoint()
+            if(spiking_mul.sum() > 0):
+                breakpoint()
             offset = 2048
             #reconstruct the output matrix from spike idices
             outputs = np.zeros(spiking_mul.size())
