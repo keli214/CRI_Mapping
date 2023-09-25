@@ -402,7 +402,7 @@ class CRI_Converter():
         print(f'Input layer shape(infeature, outfeature):\
                {self.curr_input.shape} {layer.out_features}')
         # breakpoint()
-        output_shape = (1, self.embed_dim, -1) #hardcoded for testing
+        output_shape = (1, self.embed_dim, 1024//self.embed_dim) #NOTE: hardcoded for testing
         
         #flatten the layer 
         output = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + np.prod(output_shape))])
