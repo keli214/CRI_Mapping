@@ -296,24 +296,24 @@ class SSA(nn.Module):
         x_for_qkv = x.flatten(2,3)  # B, C, H*W
         q_linear_out = self.q_linear(x_for_qkv)  
         # q_linear_out = self.q_bn(q_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T, B, N, C).contiguous()
-        q = self.q_lif(q_linear_out).reshape(B,C,self.dim,self.dim)
+        q = self.q_lif(q_linear_out)
         # q = q_linear_out.reshape(B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
 
         k_linear_out = self.k_linear(x_for_qkv)
         # k_linear_out = self.k_bn(k_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T,B,C,N).contiguous()
-        k = self.k_lif(k_linear_out).reshape(B,C,self.dim,self.dim)
+        k = self.k_lif(k_linear_out)
         # k = k_linear_out.reshape(B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
 
         v_linear_out = self.v_linear(x_for_qkv)
         # v_linear_out = self.v_bn(v_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T,B,C,N).contiguous()
-        v = self.v_lif(v_linear_out).reshape(B,C,self.dim,self.dim)
+        v = self.v_lif(v_linear_out)
         # v = v_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
         # breakpoint()
         attn = (q @ k.transpose(-2, -1)) * self.scale
         x = attn @ v
         
         # x = x.transpose(2,3).reshape(B,C,self.dim,self.dim).contiguous()
-        x = x.reshape(B,C,self.dim,self.dim)
+        x = x.reshape(B,C,self.dim*self.dim)
         
         x = self.attn_lif(x)
         
@@ -326,13 +326,13 @@ class SSA(nn.Module):
         B,C,H,W = x.shape 
         x_for_qkv = x.flatten(2,3)  # B, C, H*W
         q_linear_out = self.q_linear(x_for_qkv)  
-        q = self.q_lif(q_linear_out).reshape(B,C,self.dim,self.dim)
+        q = self.q_lif(q_linear_out)
        
         k_linear_out = self.k_linear(x_for_qkv)
-        k = self.k_lif(k_linear_out).reshape(B,C,self.dim,self.dim)
+        k = self.k_lif(k_linear_out)
 
         v_linear_out = self.v_linear(x_for_qkv)
-        v = self.v_lif(v_linear_out).reshape(B,C,self.dim,self.dim)
+        v = self.v_lif(v_linear_out)
 
         return q,k,v
     
@@ -340,13 +340,13 @@ class SSA(nn.Module):
         B,C,H,W = x.shape 
         x_for_qkv = x.flatten(2,3)  # B, C, H*W
         q_linear_out = self.q_linear(x_for_qkv)  
-        q = self.q_lif(q_linear_out).reshape(B,C,self.dim,self.dim)
+        q = self.q_lif(q_linear_out)
        
         k_linear_out = self.k_linear(x_for_qkv)
-        k = self.k_lif(k_linear_out).reshape(B,C,self.dim,self.dim)
+        k = self.k_lif(k_linear_out)
 
         v_linear_out = self.v_linear(x_for_qkv)
-        v = self.v_lif(v_linear_out).reshape(B,C,self.dim,self.dim)
+        v = self.v_lif(v_linear_out)
         attn = (q @ k.transpose(-2, -1)) * self.scale
         x = attn @ v
-        return x.reshape(B,C,self.dim,self.dim).contiguous()
+        return x.reshape(B,C,self.dim*self.dim).contiguous()

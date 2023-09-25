@@ -1,0 +1,5 @@
+.*
+result/
+runs/
+!/.gitignore
+fig/

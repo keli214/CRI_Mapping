@@ -59,11 +59,6 @@ def main():
     mnist_test = datasets.MNIST(args.data_path, train=False, download=True, transform=transforms.Compose(
         [transforms.ToTensor()]))
      
-    # # Prepare the dataset
-    # mnist_train = datasets.FashionMNIST(args.data_path, train=True, download=True, transform=transforms.Compose(
-    #     [transforms.ToTensor()]))
-    # mnist_test = datasets.FashionMNIST(args.data_path, train=False, download=True, transform=transforms.Compose(
-    #     [transforms.ToTensor()]))
     
     # Create DataLoaders
     train_loader = DataLoader(mnist_train, batch_size=args.batch_size, shuffle=True, drop_last=True)
@@ -74,8 +69,6 @@ def main():
     net_test = CNN_MaxPool()
     net_maxPool = CNN_MaxPool()
     
-    
-    # print(net_1)
     net.to(device)
     n_parameters = sum(p.numel() for p in net.parameters() if p.requires_grad)
     print(f"number of params: {n_parameters}")
@@ -88,7 +81,7 @@ def main():
         net.load_state_dict(checkpoint['net'])
         net_test.load_state_dict(checkpoint['net'])
         net_maxPool.load_state_dict(checkpoint['net'])
-        # validate(args, net_1, test_loader, device)
+        # validate(args, net, test_loader, device)
   
     
     bn = BN_Folder()  #Fold the BN layer 

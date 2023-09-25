@@ -301,8 +301,16 @@ class CRI_Converter():
         q_flat = q.view(q.size(0), -1)
         k_flat = k.view(k.size(0), -1)
         v_flat = v.view(v.size(0), -1)
+        inputs = [q_flat, k_flat, v_flat]
         batch = []
+        offset = 0
         
+        for i in range(3):
+            # breakpoint()
+            input_spike = np.array([['a' + str(idx + offset) for idx, axon in enumerate(b) if axon != 0] for b in inputs[i]])
+            batch.append(input_spike.flatten())
+            offset += len(input_spike)
+
         return batch
                 
     
@@ -362,7 +370,7 @@ class CRI_Converter():
         # self.curr_input = np.transpose(self.curr_input.reshape(self.curr_input.shape[-2]*self.curr_input.shape[-1], self.embed_dim))#Hardcode for now 
         
         # For SSA testing only
-        axons = np.array(['a' + str(i) for i in range(np.prod(self.input_shape))]).reshape(self.input_shape)
+        axons = np.array(['a' + str(i) for i in range(np.prod(self.input_shape))])
         self.curr_input = axons
         self.axon_offset += np.prod(self.curr_input.shape)
 
@@ -378,7 +386,7 @@ class CRI_Converter():
                 elif name == 'proj_linear':
                     self.curr_input = self._attention_linear_converter(model._modules[name])
             elif name == 'attn_lif':
-                self._matrix_mul_cri_testing(self.q, np.transpose(self.k, (0,2,1)), 1)
+                self._matrix_mul_cri_testing(self.q, np.transpose(self.k, (0, 2, 1)), 1)
                 self._matrix_mul_cri_testing(self.curr_input, self.v, 2)
             self.layer_index += 1
         # Do we need transpose here
@@ -394,7 +402,7 @@ class CRI_Converter():
         print(f'Input layer shape(infeature, outfeature):\
                {self.curr_input.shape} {layer.out_features}')
         # breakpoint()
-        output_shape = (1,32,32) #hardcoded for testing
+        output_shape = (1, 1, 1024) #hardcoded for testing
         
         #flatten the layer 
         output = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + np.prod(output_shape))])
@@ -420,6 +428,7 @@ class CRI_Converter():
             self.axon_offset = len(self.axon_dict)
         
         output = output.reshape(output_shape)
+        print(output.shape)
         self.neuron_offset += np.prod(output.shape)
         return output
 
@@ -476,9 +485,11 @@ class CRI_Converter():
     """
     def _matrix_mul_cri_testing(self, x, y, test):
 
-        print(f"x.shape: {x.shape}")
+        print(f"x shape: {x.shape}, y shape: {y.shape}")
         c, h, w = x.shape
-        _, _, d = y.shape
+        c, _, d = y.shape
+        
+
         # breakpoint()
 
         # x_flatten = x.flatten() # (h*w)
@@ -495,7 +506,7 @@ class CRI_Converter():
         self.neuron_offset += c*h*d
 
         #Generates the synapses between input x and the first layer of dummy neurons
-        for chanIdx, channel in enumerate(x):
+        for chanIdx, channel in enumerate(x): #Note: add c later 
             for rowIdx, row in enumerate(channel):
                 for idx, neuron in enumerate(row):
                     for i in range(d):
@@ -503,12 +514,12 @@ class CRI_Converter():
                         self.neuron_dict[neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
                                                         self.v_threshold/2))
                         if test == 1:
-                            self.mul_axon[neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
+                            self.mul_axon['a'+neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
                                                         self.v_threshold/2))
                         if test == 2:
                             self.mul_neuron[neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
                                                         self.v_threshold/2))
-                    
+
         #Generates the synapses between input y and the first layer of dummy neurons
         for chanIdx, channel in enumerate(y):
             for rowIdx, row in enumerate(channel):
@@ -517,7 +528,7 @@ class CRI_Converter():
                         self.neuron_dict[neuron].append((first_layer[chanIdx, i, rowIdx, idx], \
                                                         self.v_threshold/2))
                         if test != 0:
-                            self.mul_axon[neuron].append((first_layer[chanIdx, i, rowIdx, idx], \
+                            self.mul_axon['a'+neuron].append((first_layer[chanIdx, i, rowIdx, idx], \
                                                         self.v_threshold/2))
         
         
@@ -891,7 +902,7 @@ class CRI_Converter():
             # Additional empty input for phase delay since the network is only 2 layers
             swSpike = hardwareNetwork.step([], membranePotential=False)
             spikeIdx3 = [int(spike) - self.bias_start_idx for spike in swSpike] 
-            output.append(spikeIdx1+spikeIdx2+spikeIdx3+spikeIdx4)    
+            output.append(spikeIdx1+spikeIdx2+spikeIdx3)    
         return output 
     
     def run_CRI_hw_testing(self,inputList,softwareNetwork):
@@ -914,7 +925,7 @@ class CRI_Converter():
                     [], membranePotential=False
                 )
             spikeIdx3 = [int(spike) - self.bias_start_idx for spike in hwSpike] 
-            output.append(spikeIdx1+spikeIdx2+spikeIdx3+spikeIdx4)    
+            output.append(spikeIdx1+spikeIdx2+spikeIdx3)    
         return output 
     
 
