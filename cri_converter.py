@@ -309,7 +309,7 @@ class CRI_Converter():
             # breakpoint()
             input_spike = np.array([['a' + str(idx + offset) for idx, axon in enumerate(b) if axon != 0] for b in inputs[i]])
             batch.append(input_spike.flatten())
-            offset += len(input_spike)
+            offset += len(inputs[i].shape[0])
 
         return batch
                 
@@ -322,8 +322,6 @@ class CRI_Converter():
         axons = np.array(['a' + str(i) for i in range(np.prod(self.input_shape))]).reshape(self.input_shape)
         self.curr_input = axons
         self.axon_offset += np.prod(self.curr_input.shape)
-        
-        breakpoint()
         
         for k, name in enumerate(module_names):
             if len(list(model._modules[name]._modules)) > 0 and not isSNNLayer(model._modules[name]):
@@ -610,7 +608,7 @@ class CRI_Converter():
                 self.output_neurons.append(neuron_id)
         elif layer.bias is not None:
             print(f'Constructing {layer.bias.shape[0]} bias axons for linear layer')
-            self._cri_bias(layer,output)
+            self._cri_bias(layer,outputs)
             self.axon_offset = len(self.axon_dict)
         
     def _conv_converter(self, layer):

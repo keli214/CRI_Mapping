@@ -18,7 +18,7 @@ from torchsummary import summary
 from hs_api.api import CRI_network
 #import hs_bridge
 from spikingjelly.clock_driven.neuron import MultiStepLIFNode
-from utils import train, validate, run_CRI_hw
+from utils import train, validate
 from models import SSA
 from tqdm import tqdm
 import numpy as np
@@ -103,14 +103,14 @@ def main():
 
     # CRI only spikes when the input > threshold
     # add offset to ensure the postneuron will spike 
-    threshold_offset = 1
+    threshold_offset = 10
     
     cri_convert = CRI_Converter(args.num_steps, # num_steps
                                 0, # input_layer
                                 8, # output_layer
                                 (1, 28, 28), # input_size
                                 'spikingjelly', # backend
-                                int(quan_fun.v_threshold) + threshold_offset , # v_threshold
+                                int(quan_fun.v_threshold) + threshold_offset , # used for the weight of the synapses
                                 4) # embed_dim
     
     print(net_quan)
@@ -182,7 +182,7 @@ def main():
             outputs = np.zeros(spiking_mul.size())
             for i, output_spikes in enumerate(cri_output):
                 for spike_idx in output_spikes:
-                    output[:,:,spike_idx-offset] = 1
+                    outputs[:,:,spike_idx-offset] = 1
             outputs = torch.tensor(outputs)
             
             #compare the maxPool outputs from cri with spkingjelly
