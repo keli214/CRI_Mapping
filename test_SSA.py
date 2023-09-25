@@ -69,9 +69,11 @@ def main():
     test_loader = DataLoader(mnist_test, batch_size=args.batch_size, shuffle=True, drop_last=True)
     
     # Initialize SnnTorch/SpikingJelly model
-    net = SSA()
-    net_test = SSA()
-    net_mul = SSA()
+    N = 4
+    
+    net = SSA(N = 4)
+    net_test = SSA(N = 4)
+    net_mul = SSA(N =4)
     
     
     # print(net_1)
@@ -111,7 +113,7 @@ def main():
                                 (1, 28, 28), # input_size
                                 'spikingjelly', # backend
                                 int(quan_fun.v_threshold) + threshold_offset , # used for the weight of the synapses
-                                4) # embed_dim
+                                N) # embed_dim
     
     print(net_quan)
     cri_convert._attention_converter(net_quan)
@@ -184,7 +186,7 @@ def main():
                 for spike_idx in output_spikes:
                     i = spike_idx//(outputs.shape[-1])
                     j = spike_idx%(outputs.shape[-1])
-                    outputs[b,i,j]
+                    outputs[b,i,j] = 1
         
             outputs = torch.tensor(outputs)
             
