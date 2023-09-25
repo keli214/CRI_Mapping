@@ -134,15 +134,15 @@ def main():
                                       coreID=1, 
                                       perturbMag=8,#Zero randomness  
                                       leak=2**6)#IF
-    # else:
-    #     # breakpoint()
-    #     softwareNetwork = CRI_network(dict(cri_convert.mul_axon),
-    #                                   connections=dict(cri_convert.mul_neuron),
-    #                                   config=config,target='simpleSim', 
-    #                                   outputs = cri_convert.mul_output,
-    #                                   coreID=1, 
-    #                                   perturbMag=8, #Zero randomness  
-    #                                   leak=2**6)#IF
+    else:
+        # breakpoint()
+        softwareNetwork = CRI_network(dict(cri_convert.mul_axon),
+                                      connections=dict(cri_convert.mul_neuron),
+                                      config=config,target='simpleSim', 
+                                      outputs = cri_convert.mul_output,
+                                      coreID=1, 
+                                      perturbMag=8, #Zero randomness  
+                                      leak=2**6)#IF
 
     cri_convert.bias_start_idx = 0 #add this to the end of conversion
     loss_fun = nn.MSELoss()
@@ -170,20 +170,22 @@ def main():
             # breakpoint()
             cri_input = cri_convert.input_converter_mul(q,k,v)
             
-            # if args.hardware:
-            #     cri_output = cri_convert.run_CRI_hw_testing(cri_input,softwareNetwork)
-            # else:
-            #     cri_output = cri_convert.run_CRI_sw_testing(cri_input,softwareNetwork)
+            if args.hardware:
+                cri_output = cri_convert.run_CRI_hw_testing(cri_input,softwareNetwork)
+            else:
+                cri_output = cri_convert.run_CRI_sw_testing(cri_input,softwareNetwork)
             
             spiking_mul = net_mul.forward_mul(encoded_img)
             if(spiking_mul.sum() > 0):
                 breakpoint()
-            offset = 2048
             #reconstruct the output matrix from spike idices
-            outputs = np.zeros(spiking_mul.size())
-            # for i, output_spikes in enumerate(cri_output):
-            #     for spike_idx in output_spikes:
-            #         outputs[:,:,spike_idx-offset] = 1
+            outputs = np.zeros(spiking_mul.shape)
+            for b, output_spikes in enumerate(cri_output):
+                for spike_idx in output_spikes:
+                    i = spike_idx//(outputs.shape[-1])
+                    j = spike_idx%(outputs.shape[-1])
+                    outputs[b,i,j]
+        
             outputs = torch.tensor(outputs)
             
             #compare the multiplication outputs from cri with spkingjelly
