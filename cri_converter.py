@@ -306,6 +306,7 @@ class CRI_Converter():
         for b in range(q.shape[0]):
             input_spike = []
             offset = 0
+            breakpoint()
             for i in range(len(inputs)):
                 spikes = ['a' + str(idx + offset) for idx, axon in enumerate(inputs[i][b]) if axon != 0]
                 input_spike.extend(spikes)
