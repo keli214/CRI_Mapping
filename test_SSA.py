@@ -176,7 +176,7 @@ def main():
                 cri_output = cri_convert.run_CRI_sw_testing(cri_input,softwareNetwork)
             
             spiking_mul = net_mul.forward_mul(encoded_img)
-            # breakpoint()
+            breakpoint()
             offset = 2048
             #reconstruct the output matrix from spike idices
             outputs = np.zeros(spiking_mul.size())
@@ -185,12 +185,12 @@ def main():
                     outputs[:,:,spike_idx-offset] = 1
             outputs = torch.tensor(outputs)
             
-            #compare the maxPool outputs from cri with spkingjelly
+            #compare the multiplication outputs from cri with spkingjelly
             correct = (outputs == spiking_mul).float().sum().item()
             
-            #feed the maxPool output from cri into the net
+            #feed the mul output from cri into the net
             # breakpoint()
-            out_cri += net_test.forward_second(outputs.float().to(device))
+            out_cri += net_test.forward_output(outputs.float().to(device))
             
         functional.reset_net(net)
         functional.reset_net(net_test)

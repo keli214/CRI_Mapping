@@ -350,3 +350,9 @@ class SSA(nn.Module):
         attn = (q @ k.transpose(-2, -1)) * self.scale
         x = attn @ v
         return x.reshape(B,C,self.dim*self.dim).contiguous()
+    
+    def forward_output(self, x):
+        x = self.flat(x)
+        x = self.proj_lif(self.proj_linear(x))
+        
+        return x
