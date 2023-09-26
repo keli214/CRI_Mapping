@@ -178,15 +178,14 @@ def main():
                 cri_output = cri_convert.run_CRI_sw_testing(cri_input,softwareNetwork)
             
             spiking_mul = net_mul.forward_mul(encoded_img)
-            if(spiking_mul.sum() > 0):
-                breakpoint()
+            
             #reconstruct the output matrix from spike idices
             outputs = np.zeros(spiking_mul.shape)
             for b, output_spikes in enumerate(cri_output):
                 for spike_idx in output_spikes:
                     i = spike_idx//(outputs.shape[-1])
                     j = spike_idx%(outputs.shape[-1])
-                    outputs[b,i,j] = 1
+                    outputs[b,:,i,j] = 1
         
             outputs = torch.tensor(outputs)
             
@@ -215,6 +214,7 @@ def main():
         
         print(f'test_loss ={test_loss/test_samples: .4f}, test_acc ={test_acc/test_samples: .4f}')
         print(f'test_loss_cri ={test_loss_cri/test_samples: .4f}, test_acc_cri ={test_acc_cri/test_samples: .4f}')
+        breakpoint()
         
     test_loss /= test_samples
     test_acc /= test_samples
