@@ -3,4 +3,5 @@ result/
 runs/
 !/.gitignore
 fig/
-__pycache__
+**/__pycache__/
+
