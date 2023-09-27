@@ -1,0 +1,4 @@
+timm==0.5.4
+pytorch==1.10.0+cu111
+spikingjelly==0.0.0.0.12
+pyyaml
