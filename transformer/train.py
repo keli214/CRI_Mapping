@@ -770,8 +770,8 @@ def validate(model, loader, loss_fn, args, amp_autocast=suppress, log_suffix='')
         for batch_idx, (input, target) in enumerate(loader):
             last_batch = batch_idx == last_idx
             # if not args.prefetcher:
-                input = input.cuda()
-                target = target.cuda()
+            input = input.cuda()
+            target = target.cuda()
             if args.channels_last: #order tensors in memory preserving dimensions
                 input = input.contiguous(memory_format=torch.channels_last)
 
