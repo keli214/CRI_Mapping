@@ -164,9 +164,9 @@ def train(args, net, train_loader, test_loader, device, scaler):
         }
 
         if save_max:
-            torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_max_{args.num_steps}.pth'))
+            torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_max_T_{args.num_steps}_lr_{args.lr}.pth'))
 
-        torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_latest_{args.num_steps}.pth'))
+        torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_latest_T_{args.num_steps}_lr_{args.lr}.pth'))
 
         print(f'epoch = {epoch}, train_loss ={train_loss: .4f}, train_acc ={train_acc: .4f}, test_loss ={test_loss: .4f}, test_acc ={test_acc: .4f}, max_test_acc ={max_test_acc: .4f}')
         print(f'train speed ={train_speed: .4f} images/s, test speed ={test_speed: .4f} images/s')

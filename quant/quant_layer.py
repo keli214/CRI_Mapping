@@ -41,10 +41,10 @@ def weight_quantization(b):
     return _pq().apply
 
 class weight_quantize_fn(nn.Module):
-    def __init__(self, w_bit):
+    def __init__(self, w_bit, wgt_alpha):
         super(weight_quantize_fn, self).__init__()
         self.w_bit = w_bit-1
-        #self.wgt_alpha = wgt_alpha
+        self.wgt_alpha = wgt_alpha
         self.weight_q = weight_quantization(b=self.w_bit)
         # self.register_parameter('wgt_alpha', Parameter(torch.tensor(3.0)))
     def forward(self, weight):

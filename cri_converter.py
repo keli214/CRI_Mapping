@@ -384,7 +384,8 @@ class CRI_Converter():
                 elif name == 'v_linear':
                     self.v = self._attention_linear_converter(model._modules[name])
                 elif name == 'proj_linear':
-                    self.curr_input = self._attention_linear_converter(model._modules[name])
+                    pass
+                    # self.curr_input = self._attention_linear_converter(model._modules[name])
             elif name == 'attn_lif':
                 self._matrix_mul_cri_testing(self.q, np.transpose(self.k, (0, 2, 1)), 1)
                 self._matrix_mul_cri_testing(self.curr_input, self.v, 2)
@@ -402,7 +403,7 @@ class CRI_Converter():
         print(f'Input layer shape(infeature, outfeature):\
                {self.curr_input.shape} {layer.out_features}')
         # breakpoint()
-        output_shape = (1, self.embed_dim, 1024//self.embed_dim) #NOTE: hardcoded for testing
+        output_shape = (self.input_shape[0], self.embed_dim, layer.out_features//self.embed_dim) #C,N,D
         
         #flatten the layer 
         output = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + np.prod(output_shape))])

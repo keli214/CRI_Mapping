@@ -77,7 +77,7 @@ class SSA(nn.Module):
         self.v_linear = nn.Linear(dim, dim)
         self.v_bn = nn.BatchNorm1d(dim)
         self.v_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
-        #Threshld should not be quantized for attn_lif
+        #NOTE: Threshld should not be quantized for attn_lif
         self.attn_lif = MultiStepLIFNode(tau=2.0, v_threshold=0.5, detach_reset=True)
 
         self.proj_linear = nn.Linear(dim, dim)

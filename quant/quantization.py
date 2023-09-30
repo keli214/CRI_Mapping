@@ -225,10 +225,8 @@ class weight_quantize_fn(nn.Module):
 
 
 # In[24]:
-w_alpha=1
-w_bits=16
-weight_quant = weight_quantize_fn(w_bit= w_bits)  ## define quant function
-weight_quant.wgt_alpha = w_alpha
+
+
 fc1_quant      = weight_quant(net.fc1.weight)
 w_delta      = w_alpha/(2**(w_bits-1)-1)
 fc1_int        = fc1_quant/w_delta

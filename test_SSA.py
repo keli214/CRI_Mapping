@@ -16,7 +16,7 @@ from cri_converter import CRI_Converter
 from bn_folder import BN_Folder
 from torchsummary import summary
 from hs_api.api import CRI_network
-#import hs_bridge
+import hs_bridge
 from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 from utils import train, validate
 from models import SSA
@@ -60,20 +60,20 @@ def main():
         
     #Prepare the dataset
     mnist_train = datasets.MNIST(args.data_path, train=True, download=True, transform=transforms.Compose(
-        [transforms.ToTensor()]))
+        [transforms.Resize((7,7)),transforms.ToTensor()]))
     mnist_test = datasets.MNIST(args.data_path, train=False, download=True, transform=transforms.Compose(
-        [transforms.ToTensor()]))
+        [transforms.Resize((7,7)),transforms.ToTensor()]))
      
     # Create DataLoaders
     train_loader = DataLoader(mnist_train, batch_size=args.batch_size, shuffle=True, drop_last=True)
     test_loader = DataLoader(mnist_test, batch_size=args.batch_size, shuffle=True, drop_last=True)
     
     # Initialize SnnTorch/SpikingJelly model
-    N = 4
+    N = 14
     
-    net = SSA(N = 4)
-    net_test = SSA(N = 4)
-    net_mul = SSA(N =4)
+    net = SSA(inputDim = 7, dim = 14, N = N)
+    net_test = SSA(inputDim = 7, dim = 14, N = N)
+    net_mul = SSA(inputDim = 7, dim = 14, N = N)
     
     
     # print(net_1)
@@ -110,7 +110,7 @@ def main():
     cri_convert = CRI_Converter(args.num_steps, # num_steps
                                 0, # input_layer
                                 8, # output_layer
-                                (1, 28, 28), # input_size
+                                (1, 7, 7), # input_size
                                 'spikingjelly', # backend
                                 int(quan_fun.v_threshold) + threshold_offset , # used for the weight of the synapses
                                 N) # embed_dim
@@ -186,7 +186,7 @@ def main():
                     i = spike_idx//(outputs.shape[-1])
                     j = spike_idx%(outputs.shape[-1])
                     outputs[b,:,i,j] = 1
-        
+            
             outputs = torch.tensor(outputs)
             
             #compare the multiplication outputs from cri with spkingjelly
@@ -214,7 +214,7 @@ def main():
         
         print(f'test_loss ={test_loss/test_samples: .4f}, test_acc ={test_acc/test_samples: .4f}')
         print(f'test_loss_cri ={test_loss_cri/test_samples: .4f}, test_acc_cri ={test_acc_cri/test_samples: .4f}')
-        breakpoint()
+        # breakpoint()
         
     test_loss /= test_samples
     test_acc /= test_samples
