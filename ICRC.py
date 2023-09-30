@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--data_path', default='.', type=str, help='path to dataset')
 parser.add_argument('-b','--batch_size', default=1, type=int)
 parser.add_argument('--hardware',action='store_true', default=False, help='Run the network on FPGA')
-
+parser.add_argument('-p','--pertMag', default=8, type=int)
 
 def main():
     
@@ -93,7 +93,7 @@ def main():
                                 target='CRI', 
                                 outputs = output_list,
                                 coreID=1, 
-                                perturbMag=16,#Highest randomness  
+                                perturbMag=args.pertMag,#Highest randomness  
                                 leak=2**6)#IF
     else:
         softwareNetwork = CRI_network(axon_dict,
@@ -102,7 +102,7 @@ def main():
                                 target='simpleSim', 
                                 outputs = output_list,
                                 coreID=1, 
-                                perturbMag=16,#Highest randomness  
+                                perturbMag=args.pertMag,#Highest randomness  
                                 leak=2**6)#IF
 
     #Prepare the dataset
