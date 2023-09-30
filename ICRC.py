@@ -107,16 +107,6 @@ def main():
                                 perturbMag=16,#Highest randomness  
                                 leak=2**6)#IF
 
-
-    hardwareNetwork = CRI_network(axon_dict,
-                                connections=neuron_dict,
-                                config=config,
-                                target='CRI', 
-                                outputs = output_list,
-                                coreID=1, 
-                                perturbMag=16,#Highest randomness  
-                                leak=2**6)#IF
-
     #Prepare the dataset
     mnist_train = datasets.MNIST(args.data_path, train=True, download=True, transform=transforms.Compose(
         [transforms.Resize((7,7)),transforms.ToTensor()]))
