@@ -45,6 +45,7 @@ def main():
 
     Nv = 784
     Nc = 40
+    Nh = 500
     qunat_b_v = quant_net_b_vch[:Nv]
     qunat_b_c = quant_net_b_vch[Nv:Nv+Nc]
     qunat_b_h = quant_net_b_vch[Nv+Nc:]
@@ -60,38 +61,25 @@ def main():
     for axon in range(quant_net_Wh.shape[0]):
         axon_dict['a'+str(axon)] = [(str(neuron), int(w)) for neuron, w in enumerate(quant_net_Wh[axon])]
         
-    for neuron in range(quant_net_Wh.transpose(0,1).shape[0]):
-        neuron_dict[str(neuron)] = [('a'+str(axon), int(w)) for axon, w in enumerate(quant_net_Wh.transpose(0,1)[neuron])]   
-        
     axon_offset = len(axon_dict)
-        
-    for axon in range(quant_net_Wc.shape[0]):
-        axon_dict['a'+str(axon+axon_offset)] = [(str(neuron), int(w)) for neuron, w in enumerate(quant_net_Wc[axon])]
-        output_list.append('a'+str(axon+axon_offset))
+    neuron_offset = Nh
         
     for neuron in range(quant_net_Wc.transpose(0,1).shape[0]):
-        neuron_dict[str(neuron)].extend([('a'+str(axon+axon_offset), int(w)) for axon, w in enumerate(quant_net_Wc.transpose(0,1)[neuron])])
+        neuron_dict[str(neuron)] = ([(str(post_neuron+neuron_offset), int(w)) for post_neuron, w in enumerate(quant_net_Wc.transpose(0,1)[neuron])])
         
-    axon_offset = len(axon_dict)
-
     #TODO: bias axons
     for axon in range(qunat_b_v.shape[0]):
-        axon_dict['a'+str(axon+axon_offset)] = [(str(idx),int(qunat_b_v[axon])) for idx in range(len(neuron_dict)) ]
+        axon_dict['a'+str(axon+axon_offset)] = [(str(idx),int(qunat_b_v[axon])) for idx in range(Nh) ]
 
-    axon_offset = len(axon_dict)
-
-    for axon in range(qunat_b_c.shape[0]):
-        axon_dict['a'+str(axon+axon_offset)] = [(str(idx),int(qunat_b_c[axon])) for idx in range(len(neuron_dict)) ]
-        
     axon_offset = len(axon_dict)
 
     for axon in range(qunat_b_h.shape[0]):
-        axon_dict['a'+str(axon+axon_offset)] = [('a'+str(idx),int(qunat_b_h[axon])) for idx in range(len(axon_dict)) ]
+        axon_dict['a'+str(axon+axon_offset)] = [(str(idx),int(qunat_b_h[axon])) for idx in range(Nh,Nh+Nc) ]
         
         
     #TODO: figure out the parameters (threshold, perturbMag, leak for the network
     config= {}
-    config['neuron_type'] = "ANN" #memoryless neurons
+    config['neuron_type'] = "I&F" #memoryless neurons
     config['global_neuron_params'] = {}
     config['global_neuron_params']['v_thr'] = int(quant_threshold)
 
@@ -139,6 +127,7 @@ def main():
     for batch, label in tqdm(test_loader):
         predictions = []
         cri_inputs = [['a'+str(idx) for idx, pixel in enumerate(img.flatten()) if pixel > 0.5] for img in batch]
+        cri_inputs.extend()
         for currInput in cri_inputs:
             if args.hardware:
                 pass
