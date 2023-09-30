@@ -119,9 +119,10 @@ def main():
     for batch, label in tqdm(test_loader):
         predictions = []
         cri_inputs = [['a'+str(idx) for idx, pixel in enumerate(img.flatten()) if pixel > 0.5] for img in batch]
-        #fire bias
-        cri_inputs.extend(['a'+str(idx) for idx in range(Nv, Nv*2+Nh)])
+        
         for currInput in cri_inputs:
+            #fire bias
+            currInput.extend(['a'+str(idx) for idx in range(Nv, Nv*2+Nh)])
             if args.hardware:
                 # initiate the hardware for each image
                 hs_bridge.FPGA_Execution.fpga_controller.clear(
