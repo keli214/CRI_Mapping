@@ -78,7 +78,7 @@ def main():
     for axon in range(qunat_b_h.shape[0]):
         axon_dict['a'+str(axon+axon_offset)] = [(str(idx),int(qunat_b_h[axon])) for idx in range(Nh,Nh+Nc) ]
         
-        
+    breakpoint()
     #TODO: figure out the parameters (threshold, perturbMag, leak for the network
     config= {}
     config['neuron_type'] = "I&F" #memoryless neurons
@@ -119,10 +119,10 @@ def main():
     for batch, label in tqdm(test_loader):
         predictions = []
         cri_inputs = [['a'+str(idx) for idx, pixel in enumerate(img.flatten()) if pixel > 0.5] for img in batch]
-        cri_inputs.extend()
+        #fire bias
+        cri_inputs.extend(['a'+str(idx) for idx in range(Nv, Nv*2+Nh)])
         for currInput in cri_inputs:
             if args.hardware:
-                pass
                 # initiate the hardware for each image
                 hs_bridge.FPGA_Execution.fpga_controller.clear(
                     len(output_list), False, 0
@@ -131,14 +131,32 @@ def main():
                 softwareNetwork.simpleSim.initialize_sim_vars(len(output_list))
             spikeRate = [0] * 10
             spikes = None
+            
             if args.hardware:
                 spikes, latency, hbmAcc = hardwareNetwork.step(currInput, membranePotential=False)
             else:
                 spikes, latency, hbmAcc = softwareNetwork.step(currInput, membranePotential=False)
-            
-            spikeIdx = [int(spike)-784 for spike in spikes]
+            spikeIdx = [int(spike)-Nh for spike in spikes]
             for idx in spikeIdx:
                 spikeRate[idx%10] += 1
+                
+            if args.hardware:
+                spikes, latency, hbmAcc = hardwareNetwork.step([], membranePotential=False)
+            else:
+                spikes, latency, hbmAcc = softwareNetwork.step([], membranePotential=False) 
+            spikeIdx = [int(spike)-Nh for spike in spikes]
+            for idx in spikeIdx:
+                spikeRate[idx%10] += 1
+                
+            if args.hardware:
+                spikes, latency, hbmAcc = hardwareNetwork.step([], membranePotential=False)
+            else:
+                spikes, latency, hbmAcc = softwareNetwork.step([], membranePotential=False) 
+            spikeIdx = [int(spike)-Nh for spike in spikes]
+            for idx in spikeIdx:
+                spikeRate[idx%10] += 1
+                
+                
             predictions.append(spikeRate.index(max(spikeRate)))
         
         predictions = torch.tensor(predictions)
