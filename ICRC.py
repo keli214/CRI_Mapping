@@ -136,7 +136,7 @@ def main():
             if args.hardware:
                 spikes, latency, hbmAcc = hardwareNetwork.step(currInput, membranePotential=False)
             else:
-                spikes, latency, hbmAcc = softwareNetwork.step(currInput, membranePotential=False)
+                spikes = softwareNetwork.step(currInput, membranePotential=False)
             spikeIdx = [int(spike)-Nh for spike in spikes]
             for idx in spikeIdx:
                 spikeRate[idx%10] += 1
@@ -144,7 +144,7 @@ def main():
             if args.hardware:
                 spikes, latency, hbmAcc = hardwareNetwork.step([], membranePotential=False)
             else:
-                spikes, latency, hbmAcc = softwareNetwork.step([], membranePotential=False) 
+                spikes = softwareNetwork.step([], membranePotential=False) 
             spikeIdx = [int(spike)-Nh for spike in spikes]
             for idx in spikeIdx:
                 spikeRate[idx%10] += 1
@@ -152,7 +152,7 @@ def main():
             if args.hardware:
                 spikes, latency, hbmAcc = hardwareNetwork.step([], membranePotential=False)
             else:
-                spikes, latency, hbmAcc = softwareNetwork.step([], membranePotential=False) 
+                spikes = softwareNetwork.step([], membranePotential=False) 
             spikeIdx = [int(spike)-Nh for spike in spikes]
             for idx in spikeIdx:
                 spikeRate[idx%10] += 1
