@@ -54,8 +54,6 @@ def main():
     neuron_dict = {}
     output_list = []
 
-    breakpoint()
-
     axon_offset = 0
 
     for axon in range(quant_net_Wh.shape[0]):
