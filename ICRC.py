@@ -3,8 +3,6 @@ from quant.quant_layer import *
 import torch 
 import argparse
 from hs_api.api import CRI_network
-
-# imports
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -14,24 +12,25 @@ from torch.utils.data import DataLoader
 import os
 import time
 from hs_api.api import CRI_network
-import hs_bridge
-from tqdm import tqdm
-
-
 # import hs_bridge
+from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--data_path', default='.', type=str, help='path to dataset')
 parser.add_argument('-b','--batch_size', default=1, type=int)
-
-net_Wc = torch.tensor(np.loadtxt("net_Wc.csv", delimiter=",", dtype=float))
-net_Wh = torch.tensor(np.loadtxt("net_Wh.csv", delimiter=",", dtype=float))
-net_b_vch = torch.tensor(np.loadtxt("net_b_vch.csv", delimiter=",", dtype=float))
+parser.add_argument('--hardware',action='store_true', default=False, help='Run the network on FPGA')
 
 
 def main():
+    
+    
     args = parser.parse_args()
     #TODO: quantitize the weight and bias
+    
+    net_Wc = torch.tensor(np.loadtxt("net_Wc.csv", delimiter=",", dtype=float))
+    net_Wh = torch.tensor(np.loadtxt("net_Wh.csv", delimiter=",", dtype=float))
+    net_b_vch = torch.tensor(np.loadtxt("net_b_vch.csv", delimiter=",", dtype=float))
+
     w_alpha=1
     w_bits=16
     threshold = 1.0
@@ -96,6 +95,26 @@ def main():
     config['global_neuron_params'] = {}
     config['global_neuron_params']['v_thr'] = int(quant_threshold)
 
+    hardwareNetwork, softwareNetwork = None, None
+    if args.hardware:
+        hardwareNetwork = CRI_network(axon_dict,
+                                connections=neuron_dict,
+                                config=config,
+                                target='CRI', 
+                                outputs = output_list,
+                                coreID=1, 
+                                perturbMag=16,#Highest randomness  
+                                leak=2**6)#IF
+    else:
+        softwareNetwork = CRI_network(axon_dict,
+                                connections=neuron_dict,
+                                config=config,
+                                target='simpleSim', 
+                                outputs = output_list,
+                                coreID=1, 
+                                perturbMag=16,#Highest randomness  
+                                leak=2**6)#IF
+
 
     hardwareNetwork = CRI_network(axon_dict,
                                 connections=neuron_dict,
@@ -121,13 +140,22 @@ def main():
         predictions = []
         cri_inputs = [['a'+str(idx) for idx, pixel in enumerate(img.flatten()) if pixel > 0.5] for img in batch]
         for currInput in cri_inputs:
-            # initiate the hardware for each image
-            hs_bridge.FPGA_Execution.fpga_controller.clear(
-                len(output_list), False, 0
-            )  ##Num_neurons, simDump, coreOverride
+            if args.hardware:
+                pass
+                # initiate the hardware for each image
+                hs_bridge.FPGA_Execution.fpga_controller.clear(
+                    len(output_list), False, 0
+                )  ##Num_neurons, simDump, coreOverride
+            else:
+                softwareNetwork.simpleSim.initialize_sim_vars(len(output_list))
             spikeRate = [0] * 10
-            hwSpike, latency, hbmAcc = hardwareNetwork.step(currInput, membranePotential=False)
-            spikeIdx = [int(spike)-784 for spike in hwSpike]
+            spikes = None
+            if args.hardware:
+                spikes, latency, hbmAcc = hardwareNetwork.step(currInput, membranePotential=False)
+            else:
+                spikes, latency, hbmAcc = softwareNetwork.step(currInput, membranePotential=False)
+            
+            spikeIdx = [int(spike)-784 for spike in spikes]
             for idx in spikeIdx:
                 spikeRate[idx%10] += 1
             predictions.append(spikeRate.index(max(spikeRate)))
