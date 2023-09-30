@@ -66,6 +66,10 @@ def main():
         
     for neuron in range(quant_net_Wc.transpose(0,1).shape[0]):
         neuron_dict[str(neuron)] = ([(str(post_neuron+neuron_offset), int(w)) for post_neuron, w in enumerate(quant_net_Wc.transpose(0,1)[neuron])])
+    
+    for neuron in range(Nc):
+        neuron_dict[str(neuron+neuron_offset)] = []
+        output_list.append(str(neuron+neuron_offset))
         
     #TODO: bias axons
     for axon in range(qunat_b_v.shape[0]):
