@@ -163,6 +163,7 @@ def main():
         predictions = torch.tensor(predictions)
         test_correct += (predictions == label).float().sum().item()
         test_samples += label.numel()
+        print(f'Batch accuracy: {test_correct/test_samples}')  
         
     test_acc = test_correct/test_samples
     print(test_acc)  
