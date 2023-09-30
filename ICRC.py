@@ -126,10 +126,10 @@ def main():
             if args.hardware:
                 # initiate the hardware for each image
                 hs_bridge.FPGA_Execution.fpga_controller.clear(
-                    len(output_list), False, 0
+                    len(neuron_dict), False, 0
                 )  ##Num_neurons, simDump, coreOverride
             else:
-                softwareNetwork.simpleSim.initialize_sim_vars(len(output_list))
+                softwareNetwork.simpleSim.initialize_sim_vars(len(neuron_dict))
             spikeRate = [0] * 10
             spikes = None
             
