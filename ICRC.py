@@ -86,7 +86,7 @@ def main():
     axon_offset = len(axon_dict)
 
     for axon in range(qunat_b_h.shape[0]):
-        axon_dict['a'+str(axon+axon_offset)] = [(str(idx),int(qunat_b_h[axon])) for idx in range(len(neuron_dict)) ]
+        axon_dict['a'+str(axon+axon_offset)] = [('a'+str(idx),int(qunat_b_h[axon])) for idx in range(len(axon_dict)) ]
         
         
     #TODO: figure out the parameters (threshold, perturbMag, leak for the network
