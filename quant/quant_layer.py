@@ -89,21 +89,24 @@ class QuantLinear(nn.Linear):
     def __init__(self, num_inputs, num_outputs, bias=False):
         super(QuantLinear, self).__init__(num_inputs, num_outputs, bias)
         self.layer_type = 'QuantLinear'
-        self.bit = 16
+        self.bit = 1
         #self.bias = bias
-        self.weight_quant = weight_quantize_fn(w_bit=self.bit)
+        self.weight_quant = weight_quantize_fn(w_bit=self.bit, wgt_alpha=1)
         self.act_alq = act_quantization(self.bit)
-        self.act_alpha = torch.nn.Parameter(torch.tensor(8.0))
+        self.act_alpha = torch.nn.Parameter(torch.tensor(1.0))
         self.weight_q  = torch.nn.Parameter(torch.zeros([num_inputs, num_outputs]))
         
     def forward(self, x):
+        # breakpoint()
         weight_q = self.weight_quant(self.weight)       
         #self.register_parameter('weight_q', Parameter(weight_q))  # Mingu added
         self.weight_q = torch.nn.Parameter(weight_q)  # Store weight_q during the training
         x = self.act_alq(x, self.act_alpha)
-        return F.linear(x, weight_q, self.bias)
+        
+        return F.linear(x, self.weight_q, self.bias)
     
     def show_params(self):
         wgt_alpha = round(self.weight_quant.wgt_alpha.data.item(), 3)
         act_alpha = round(self.act_alpha.data.item(), 3)
         print('clipping threshold weight alpha: {:2f}, activation alpha: {:2f}'.format(wgt_alpha, act_alpha))
+        

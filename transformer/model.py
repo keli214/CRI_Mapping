@@ -9,6 +9,7 @@ from functools import partial
 import numpy as np 
 __all__ = ['spikformer']
 from torch.utils.tensorboard import SummaryWriter
+from quant.quant_layer import act_quantization
     
 def activation_visual(x, layer):
     writer = SummaryWriter('runs/transformer/activations')
@@ -83,6 +84,10 @@ class SSA(nn.Module):
         self.proj_linear = nn.Linear(dim, dim)
         self.proj_bn = nn.BatchNorm1d(dim)
         self.proj_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        
+        #NOTE: testing the accuracy w/ single bit quantization
+        self.act_alq = act_quantization(1) #activation quantization 
+        self.act_alpha = 8.0 #scaling factor
 
     def forward(self, x):
         T,B,N,C = x.shape # C = H*W = 32*32 = 1024
@@ -106,7 +111,13 @@ class SSA(nn.Module):
         
         attn = (q @ k.transpose(-2, -1)) * self.scale
         
+        attn = self.act_alq(attn, self.act_alpha)
+        
         x = attn @ v
+        
+        x = self.act_alq(x, self.act_alpha)
+        
+        
         x = x.transpose(2, 3).reshape(T, B, N, C).contiguous()
         x = self.attn_lif(x)
         x = x.flatten(0, 1)
