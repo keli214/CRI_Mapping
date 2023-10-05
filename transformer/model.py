@@ -157,7 +157,7 @@ class SPS(nn.Module):
         self.proj_bn = nn.BatchNorm2d(embed_dims//8)
         self.proj_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
 
-        self.proj_conv1 = nn.Conv2d(embed_dims//8, embed_dims//4, kernel_size=3, stride=1, padding=1, bias=Falselo
+        self.proj_conv1 = nn.Conv2d(embed_dims//8, embed_dims//4, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn1 = nn.BatchNorm2d(embed_dims//4)
         self.proj_lif1 = MultiStepLIFNode(tau=2.0, detach_reset=True)
 
