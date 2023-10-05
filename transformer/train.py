@@ -96,7 +96,7 @@ parser.add_argument('--patch-size', type=int, default=None, metavar='N',
 parser.add_argument('--mlp-ratio', type=int, default=None, metavar='N',
                     help='expand ration of embedding dimension in MLP block')
 # Dataset / Model parameters
-parser.add_argument('-data-dir', metavar='DIR',default="/home/zhou/Compact-Transformers-main/cifar-10-python/",
+parser.add_argument('-data-dir', metavar='DIR',default="/Volumes/export/isn/keli/code/data",
                     help='path to dataset')
 parser.add_argument('--dataset', '-d', metavar='NAME', default='torch/cifar10',
                     help='dataset type (default: ImageFolder/ImageTar if empty)')
@@ -494,9 +494,9 @@ def main():
     dataset_train = create_dataset(
         args.dataset,
         root=args.data_dir, split=args.train_split, is_training=True,
-        batch_size=args.batch_size, repeats=args.epoch_repeats)
+        batch_size=args.batch_size, repeats=args.epoch_repeats, download=True)
     dataset_eval = create_dataset(
-        args.dataset, root=args.data_dir, split=args.val_split, is_training=False, batch_size=args.batch_size)
+        args.dataset, root=args.data_dir, split=args.val_split, is_training=False, batch_size=args.batch_size, download=True)
 
     # setup mixup / cutmix
     collate_fn = None

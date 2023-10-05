@@ -1,12 +1,12 @@
-epochs: 5
+epochs: 20
 time_step: 4
 layer: 4
 dim: 384
 num_heads: 4
 patch_size: 4
 mlp_ratio: 4
-
-data_dir: /Volumes/export/isn/keli/code/CRI/data
+start_epoch: 15
+data_dir: /Volumes/export/isn/keli/code/data
 dataset: torch/cifar10
 num_classes: 10
 img_size: 32
@@ -36,8 +36,8 @@ cutmix: 0.0
 reprob: 0.25
 remode: const
 amp: True
-batch_size: 128
-val_batch_size: 128
+batch_size: 64
+val_batch_size: 64
 lr: 5e-4
 min_lr: 1e-5
 sched: cosine
@@ -47,4 +47,4 @@ warmup_epochs: 20
 warmup_lr: 0.00001
 opt: adamw
 smoothing: 0.1
-workers: 16
+workers: 12

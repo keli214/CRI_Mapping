@@ -4,4 +4,4 @@ runs/
 !/.gitignore
 fig/
 **/__pycache__/
-
+**/output/
