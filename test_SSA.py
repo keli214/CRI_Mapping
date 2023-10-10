@@ -73,8 +73,8 @@ def main():
     N = 4
     
     net = SSA(inputDim = 2, dim = 4, N = N)
-    net_test = SSA(inputDim = 2, dim = 4, N = N)
-    net_mul = SSA(inputDim = 2, dim = 4, N = N)
+    # net_test = SSA(inputDim = 2, dim = 4, N = N)
+    # net_mul = SSA(inputDim = 2, dim = 4, N = N)
     
     
     # print(net_1)
@@ -83,16 +83,16 @@ def main():
     print(f"number of params: {n_parameters}")
     # print(net)
     
-    if args.resume_path != "" or args.train:
-        print('Start Training')
-        train(args, net, train_loader, test_loader, device, scaler)
-    elif args.load_path != "":
-        checkpoint = torch.load(args.load_path, map_location=device)
-        net.load_state_dict(checkpoint['net'])
-        # Testing for conversion: 
-        net_test.load_state_dict(checkpoint['net'])
-        net_mul.load_state_dict(checkpoint['net'])
-        validate(args, net, test_loader, device)
+    # if args.resume_path != "" or args.train:
+    #     print('Start Training')
+    #     train(args, net, train_loader, test_loader, device, scaler)
+    # elif args.load_path != "":
+    #     checkpoint = torch.load(args.load_path, map_location=device)
+    #     net.load_state_dict(checkpoint['net'])
+    #     # Testing for conversion: 
+    #     net_test.load_state_dict(checkpoint['net'])
+    #     net_mul.load_state_dict(checkpoint['net'])
+    #     validate(args, net, test_loader, device)
   
     
     bn = BN_Folder()  #Fold the BN layer 
@@ -169,7 +169,7 @@ def main():
             out_fr += net(encoded_img)
             
             
-            q,k,v = net_test.forward_qkv(encoded_img)
+            q,k,v = net.forward_qkv(encoded_img)
             
             cri_input = cri_convert.input_converter_mul(q,k,v)
             
@@ -178,7 +178,7 @@ def main():
             else:
                 cri_output = cri_convert.run_CRI_sw_testing(cri_input,softwareNetwork)
             
-            spiking_mul = net_mul.forward_mul(encoded_img)
+            spiking_mul = net.forward_mul(encoded_img)
             
             if(spiking_mul.sum() > 0):
                 breakpoint()
@@ -198,11 +198,11 @@ def main():
             
             #feed the mul output from cri into the net
             # breakpoint()
-            out_cri += net_test.forward_output(outputs.float().to(device))
+            out_cri += net.forward_output(outputs.float().to(device))
             
         functional.reset_net(net)
-        functional.reset_net(net_test)
-        functional.reset_net(net_mul)
+        # functional.reset_net(net_test)
+        # functional.reset_net(net_mul)
         
         out_fr = out_fr/args.num_steps
         out_cri = out_cri/args.num_steps
