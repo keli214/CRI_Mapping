@@ -1,4 +1,4 @@
-epochs: 20
+epochs: 50
 time_step: 4
 layer: 4
 dim: 384

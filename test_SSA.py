@@ -11,8 +11,7 @@ import os
 import time
 import argparse
 from spikingjelly import visualizing
-from quant_network import Quantize_Network
-from cri_converter import CRI_Converter
+from cri_converter import CRI_Converter, Quantize_Network
 from bn_folder import BN_Folder
 from torchsummary import summary
 from hs_api.api import CRI_network
@@ -52,7 +51,9 @@ def main():
     args = parser.parse_args()
 
     dtype = torch.float
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    # device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    device = torch.device("cpu")
+    print(device)
     
     scaler = None
     if args.amp:
@@ -169,7 +170,7 @@ def main():
             
             
             q,k,v = net_test.forward_qkv(encoded_img)
-            # breakpoint()
+            
             cri_input = cri_convert.input_converter_mul(q,k,v)
             
             if args.hardware:
@@ -178,6 +179,9 @@ def main():
                 cri_output = cri_convert.run_CRI_sw_testing(cri_input,softwareNetwork)
             
             spiking_mul = net_mul.forward_mul(encoded_img)
+            
+            if(((q==1) & (k.transpose(2,3)==1) & (v==1)).sum() > 0):
+                breakpoint()
             
             #reconstruct the output matrix from spike idices
             outputs = np.zeros(spiking_mul.shape)

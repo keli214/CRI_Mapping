@@ -507,7 +507,7 @@ class CRI_Converter():
         self.neuron_offset += c*h*d
 
         #Generates the synapses between input x and the first layer of dummy neurons
-        for chanIdx, channel in enumerate(x): #Note: add c later 
+        for chanIdx, channel in enumerate(x):  
             for rowIdx, row in enumerate(channel):
                 for idx, neuron in enumerate(row):
                     for i in range(d):

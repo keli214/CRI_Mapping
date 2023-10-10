@@ -9,7 +9,7 @@ from functools import partial
 import numpy as np 
 __all__ = ['spikformer']
 from torch.utils.tensorboard import SummaryWriter
-from quant.quant_layer import act_quantization
+from quant import act_quantization
     
 def activation_visual(x, layer):
     writer = SummaryWriter('runs/transformer/activations')
@@ -109,13 +109,16 @@ class SSA(nn.Module):
         v_linear_out = self.v_lif(v_linear_out)
         v = v_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
         
-        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = (q @ k.transpose(-2, -1)) 
         
-        attn = self.act_alq(attn, self.act_alpha)
+        # breakpoint()
+        attn = torch.tensor(self.act_alq(attn, self.act_alpha), requires_grad=True)
+        
         
         x = attn @ v
         
-        x = self.act_alq(x, self.act_alpha)
+        x = torch.tensor(self.act_alq(x, self.act_alpha), requires_grad=True)
+        # breakpoint()
         
         
         x = x.transpose(2, 3).reshape(T, B, N, C).contiguous()
@@ -128,7 +131,7 @@ class Block(nn.Module):
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, sr_ratio=1):
         super().__init__()
-        self.norm1 = norm_layer(dim)
+        self.norm1 = norm_layer(dim) #Note: layer norm wasn't used in the actual implementation
         self.attn = SSA(dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale,
                               attn_drop=attn_drop, proj_drop=drop, sr_ratio=sr_ratio)
         self.norm2 = norm_layer(dim)
