@@ -61,20 +61,20 @@ def main():
         
     #Prepare the dataset
     mnist_train = datasets.MNIST(args.data_path, train=True, download=True, transform=transforms.Compose(
-        [transforms.Resize((7,7)),transforms.ToTensor()]))
+        [transforms.Resize((2,2)),transforms.ToTensor()]))
     mnist_test = datasets.MNIST(args.data_path, train=False, download=True, transform=transforms.Compose(
-        [transforms.Resize((7,7)),transforms.ToTensor()]))
+        [transforms.Resize((2,2)),transforms.ToTensor()]))
      
     # Create DataLoaders
     train_loader = DataLoader(mnist_train, batch_size=args.batch_size, shuffle=True, drop_last=True)
     test_loader = DataLoader(mnist_test, batch_size=args.batch_size, shuffle=True, drop_last=True)
     
     # Initialize SnnTorch/SpikingJelly model
-    N = 14
+    N = 4
     
-    net = SSA(inputDim = 7, dim = 14, N = N)
-    net_test = SSA(inputDim = 7, dim = 14, N = N)
-    net_mul = SSA(inputDim = 7, dim = 14, N = N)
+    net = SSA(inputDim = 2, dim = 4, N = N)
+    net_test = SSA(inputDim = 2, dim = 4, N = N)
+    net_mul = SSA(inputDim = 2, dim = 4, N = N)
     
     
     # print(net_1)
@@ -111,7 +111,7 @@ def main():
     cri_convert = CRI_Converter(args.num_steps, # num_steps
                                 0, # input_layer
                                 8, # output_layer
-                                (1, 7, 7), # input_size
+                                (1, 2, 2), # input_size
                                 'spikingjelly', # backend
                                 int(quan_fun.v_threshold) + threshold_offset , # used for the weight of the synapses
                                 N) # embed_dim
@@ -180,7 +180,7 @@ def main():
             
             spiking_mul = net_mul.forward_mul(encoded_img)
             
-            if(((q==1) & (k.transpose(2,3)==1) & (v==1)).sum() > 0):
+            if(spiking_mul.sum() > 0):
                 breakpoint()
             
             #reconstruct the output matrix from spike idices

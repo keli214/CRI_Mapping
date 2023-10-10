@@ -490,8 +490,8 @@ class CRI_Converter():
         c, h, w = x.shape
         c, _, d = y.shape
         
-
-        # breakpoint()
+        
+        breakpoint()
 
         # x_flatten = x.flatten() # (h*w)
         # y_flatten = y.transpose().flatten() #(d*w)
@@ -505,6 +505,7 @@ class CRI_Converter():
         second_layer = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + c*h*d)])
         second_layer = second_layer.reshape(c,h,d)
         self.neuron_offset += c*h*d
+        
 
         #Generates the synapses between input x and the first layer of dummy neurons
         for chanIdx, channel in enumerate(x):  

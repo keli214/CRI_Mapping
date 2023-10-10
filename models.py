@@ -311,6 +311,7 @@ class SSA(nn.Module):
         # v = v_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
         # breakpoint()
         attn = (q @ k.transpose(-2, -1)) * self.scale
+        
         x = attn @ v
         
         # x = x.transpose(2,3).reshape(B,C,self.dim,self.dim).contiguous()
@@ -349,6 +350,9 @@ class SSA(nn.Module):
         v_linear_out = self.v_linear(x_for_qkv)
         v = self.v_lif(v_linear_out).reshape(B,C,self.N, -1)
         attn = (q @ k.transpose(-2, -1)) * self.scale
+        
+        # if(attn.sum() > 0):
+        #     breakpoint()
         x = attn @ v
         return x.reshape(B,C,self.N,-1).contiguous()
     
