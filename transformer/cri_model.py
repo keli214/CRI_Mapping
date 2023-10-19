@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from spikingjelly.activation_based import neuron, functional, surrogate, layer
+from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 from timm.models.layers import to_2tuple, trunc_normal_, DropPath
 from timm.models.registry import register_model
 from timm.models.vision_transformer import _cfg
@@ -9,6 +9,7 @@ from functools import partial
 import numpy as np 
 __all__ = ['spikformer']
 from torch.utils.tensorboard import SummaryWriter
+from quant import act_quantization
     
 def activation_visual(x, layer):
     writer = SummaryWriter('runs/transformer/activations')
@@ -37,11 +38,11 @@ class MLP(nn.Module):
         hidden_features = hidden_features or in_features
         self.fc1_linear = nn.Linear(in_features, hidden_features)
         self.fc1_bn = nn.BatchNorm1d(hidden_features)
-        self.fc1_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
+        self.fc1_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
 
         self.fc2_linear = nn.Linear(hidden_features, out_features)
         self.fc2_bn = nn.BatchNorm1d(out_features)
-        self.fc2_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
+        self.fc2_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
 
         self.c_hidden = hidden_features
         self.c_output = out_features
@@ -66,61 +67,69 @@ class SSA(nn.Module):
         self.dim = dim
         self.num_heads = num_heads
         self.scale = 0.125
-        self.q_linear = nn.Linear(dim, dim, bias = False)
+        self.q_linear = nn.Linear(dim, dim)
         self.q_bn = nn.BatchNorm1d(dim)
-        self.q_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
+        self.q_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
 
-        self.k_linear = nn.Linear(dim, dim, bias = False)
+        self.k_linear = nn.Linear(dim, dim)
         self.k_bn = nn.BatchNorm1d(dim)
-        self.k_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
+        self.k_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
 
-        self.v_linear = nn.Linear(dim, dim, bias = False)
+        self.v_linear = nn.Linear(dim, dim)
         self.v_bn = nn.BatchNorm1d(dim)
-        self.v_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
-        self.attn_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
+        self.v_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        #NOTE: Threshld should not be quantized for attn_lif
+        self.attn_lif = MultiStepLIFNode(tau=2.0, v_threshold=0.5, detach_reset=True)
 
-        self.proj_linear = nn.Linear(dim, dim, bias = False)
+        self.proj_linear = nn.Linear(dim, dim)
         self.proj_bn = nn.BatchNorm1d(dim)
-        self.proj_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
+        self.proj_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        
+        #NOTE: testing the accuracy w/ single bit quantization
+        self.act_alq = act_quantization(1) #activation quantization 
+        self.act_alpha = 8.0 #scaling factor
 
     def forward(self, x):
-        T,B,N,C = x.shape # C = H*W = 32*32 = 1024
+        T,B,N,C = x.shape # C: embed dim
                         
-        
+
         x_for_qkv = x.flatten(0, 1)  # TB, N, C
-        # print(f"x_for_qkv.shape: {x_for_qkv.shape}")
         q_linear_out = self.q_linear(x_for_qkv)  # [TB, N, C]
-        # print(f"q_linear_out.shape: {q_linear_out.shape}")
         q_linear_out = self.q_bn(q_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T, B, N, C).contiguous()
         q_linear_out = self.q_lif(q_linear_out)
         q = q_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
 
         k_linear_out = self.k_linear(x_for_qkv)
-        k_linear_out = self.k_bn(k_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T,B,C,N).contiguous()
+        k_linear_out = self.k_bn(k_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T,B, N, C).contiguous()
         k_linear_out = self.k_lif(k_linear_out)
         k = k_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
 
         v_linear_out = self.v_linear(x_for_qkv)
-        v_linear_out = self.v_bn(v_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T,B,C,N).contiguous()
+        v_linear_out = self.v_bn(v_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T,B, N, C).contiguous()
         v_linear_out = self.v_lif(v_linear_out)
         v = v_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
+        # breakpoint()
+        attn = (q @ k.transpose(-2, -1)) 
         
-        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = torch.tensor(self.act_alq(attn, self.act_alpha), requires_grad=True)
+        
         x = attn @ v
-        # print(f"m.shape: {x.shape}")
+        
+        x = torch.tensor(self.act_alq(x, self.act_alpha), requires_grad=True)
+        # breakpoint()
+        
+        
         x = x.transpose(2, 3).reshape(T, B, N, C).contiguous()
         x = self.attn_lif(x)
-        # print(f"atten: {x.shape}")
         x = x.flatten(0, 1)
         x = self.proj_lif(self.proj_bn(self.proj_linear(x).transpose(-1, -2)).transpose(-1, -2).reshape(T, B, N, C))
-        # print(f"proj_lif.shape: {x.shape}")
         return x
 
 class Block(nn.Module):
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, sr_ratio=1):
         super().__init__()
-        self.norm1 = norm_layer(dim)
+        self.norm1 = norm_layer(dim) #Note: layer norm wasn't used in the actual implementation
         self.attn = SSA(dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale,
                               attn_drop=attn_drop, proj_drop=drop, sr_ratio=sr_ratio)
         self.norm2 = norm_layer(dim)
@@ -137,49 +146,54 @@ class Block(nn.Module):
 
 
 class SPS(nn.Module):
-    def __init__(self, img_size_h=32, img_size_w=32, patch_size=4, in_channels=3, embed_dims=256):
+    def __init__(self, img_size_h=28, img_size_w=28, patch_size=7, in_channels=1, embed_dims=16):
         super().__init__()
         self.image_size = [img_size_h, img_size_w] #32*32
         patch_size = to_2tuple(patch_size)
         self.patch_size = patch_size
         self.C = in_channels #3
+        
         self.H, self.W = self.image_size[0] // patch_size[0], self.image_size[1] // patch_size[1]
         self.num_patches = self.H * self.W #1024
         self.proj_conv = nn.Conv2d(in_channels, embed_dims//8, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn = nn.BatchNorm2d(embed_dims//8)
-        self.proj_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
+        self.proj_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+
         self.proj_conv1 = nn.Conv2d(embed_dims//8, embed_dims//4, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn1 = nn.BatchNorm2d(embed_dims//4)
-        self.proj_lif1 = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
+        self.proj_lif1 = MultiStepLIFNode(tau=2.0, detach_reset=True)
+
         self.proj_conv2 = nn.Conv2d(embed_dims//4, embed_dims//2, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn2 = nn.BatchNorm2d(embed_dims//2)
-        self.proj_lif2 = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
-        self.maxpool2 = torch.nn.AvgPool2d(kernel_size=3, stride=2, padding=1, ceil_mode=False)
+        self.proj_lif2 = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.maxpool2 = torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)
 
         self.proj_conv3 = nn.Conv2d(embed_dims//2, embed_dims, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn3 = nn.BatchNorm2d(embed_dims)
-        self.proj_lif3 = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
-        self.maxpool3 = torch.nn.AvgPool2d(kernel_size=3, stride=2, padding=1, ceil_mode=False)
+        self.proj_lif3 = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.maxpool3 = torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)
 
         self.rpe_conv = nn.Conv2d(embed_dims, embed_dims, kernel_size=3, stride=1, padding=1, bias=False)
         self.rpe_bn = nn.BatchNorm2d(embed_dims)
-        self.rpe_lif = neuron.LIFNode(tau=2.0,surrogate_function=surrogate.ATan())
+        self.rpe_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+
     def forward(self, x):
+        
         T, B, C, H, W = x.shape #time_step, batch_num, color_channel, h, w
         x = self.proj_conv(x.flatten(0, 1)) # have some fire value
+        # breakpoint()
         x = self.proj_bn(x).reshape(T, B, -1, H, W).contiguous()
-        
         x = self.proj_lif(x).flatten(0, 1).contiguous()
+        
         # print("T0:", x.reshape(T,B, -1, H, W)[0,0,:,0,0] )
-        # print("T1:", x.reshape(T,B, -1, H, W)[1,0,:,0,0] )
-
+        # print("T1:", x.reshape(T,B, -1, H, W)[1,0,:,0,0] 
+        
         x = self.proj_conv1(x)
         x = self.proj_bn1(x).reshape(T, B, -1, H, W).contiguous()
         x = self.proj_lif1(x).flatten(0, 1).contiguous()
-        
+
         x = self.proj_conv2(x)
         x = self.proj_bn2(x).reshape(T, B, -1, H, W).contiguous()
-        
         x = self.proj_lif2(x).flatten(0, 1).contiguous()
         x = self.maxpool2(x)
 
@@ -194,13 +208,13 @@ class SPS(nn.Module):
         x = self.rpe_lif(x)
         x = x + x_feat
 
-        x = x.flatten(-2).transpose(-1, -2)  # T,B,N,C
+        x = x.flatten(-2).transpose(-1, -2)  # T,B,N,D
         return x
 
 
 class Spikformer(nn.Module):
     def __init__(self,
-                 img_size_h=128, img_size_w=128, patch_size=16, in_channels=2, num_classes=11,
+                 img_size_h=128, img_size_w=128, patch_size=7, in_channels=2, num_classes=11,
                  embed_dims=[64, 128, 256], num_heads=[1, 2, 4], mlp_ratios=[4, 4, 4], qkv_bias=False, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm,
                  depths=[6, 8, 6], sr_ratios=[8, 4, 2], T = 4
@@ -211,7 +225,7 @@ class Spikformer(nn.Module):
         self.depths = depths
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depths)]  # stochastic depth decay rule
-
+        
         patch_embed = SPS(img_size_h=img_size_h,
                                  img_size_w=img_size_w,
                                  patch_size=patch_size,

@@ -33,7 +33,7 @@ def main():
 
     w_alpha=1
     w_bits=16
-    threshold = 1.0
+    threshold = 12.0
     weight_quant = weight_quantize_fn(w_bit= w_bits, wgt_alpha = w_alpha)
     w_delta = w_alpha/(2**(w_bits-1)-1)
 
@@ -107,9 +107,9 @@ def main():
 
     #Prepare the dataset
     mnist_train = datasets.MNIST(args.data_path, train=True, download=True, transform=transforms.Compose(
-        [transforms.Resize((7,7)),transforms.ToTensor()]))
+        [transforms.ToTensor()]))
     mnist_test = datasets.MNIST(args.data_path, train=False, download=True, transform=transforms.Compose(
-        [transforms.Resize((7,7)),transforms.ToTensor()]))
+        [transforms.ToTensor()]))
         
     # Create DataLoaders
     train_loader = DataLoader(mnist_train, batch_size=args.batch_size, shuffle=True, drop_last=True)

@@ -90,7 +90,7 @@ class SSA(nn.Module):
         self.act_alpha = 8.0 #scaling factor
 
     def forward(self, x):
-        T,B,N,C = x.shape # C = H*W = 32*32 = 1024
+        T,B,N,C = x.shape # C: embed dim
                         
 
         x_for_qkv = x.flatten(0, 1)  # TB, N, C
@@ -100,18 +100,18 @@ class SSA(nn.Module):
         q = q_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
 
         k_linear_out = self.k_linear(x_for_qkv)
-        k_linear_out = self.k_bn(k_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T,B,C,N).contiguous()
+        k_linear_out = self.k_bn(k_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T,B, N, C).contiguous()
         k_linear_out = self.k_lif(k_linear_out)
         k = k_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
 
         v_linear_out = self.v_linear(x_for_qkv)
-        v_linear_out = self.v_bn(v_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T,B,C,N).contiguous()
+        v_linear_out = self.v_bn(v_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T,B, N, C).contiguous()
         v_linear_out = self.v_lif(v_linear_out)
         v = v_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
         
         attn = (q @ k.transpose(-2, -1)) 
         
-        # breakpoint()
+        breakpoint()
         attn = torch.tensor(self.act_alq(attn, self.act_alpha), requires_grad=True)
         
         
@@ -212,7 +212,7 @@ class SPS(nn.Module):
 
 class Spikformer(nn.Module):
     def __init__(self,
-                 img_size_h=128, img_size_w=128, patch_size=16, in_channels=2, num_classes=11,
+                 img_size_h=28, img_size_w=28, patch_size=16, in_channels=1, num_classes=11,
                  embed_dims=[64, 128, 256], num_heads=[1, 2, 4], mlp_ratios=[4, 4, 4], qkv_bias=False, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm,
                  depths=[6, 8, 6], sr_ratios=[8, 4, 2], T = 4

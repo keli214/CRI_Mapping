@@ -463,7 +463,6 @@ def main():
             load_checkpoint(model_ema.module, args.resume, use_ema=True)
 
     # setup distributed training
-    # setup distributed training
     if args.distributed:
         if has_apex and use_amp != 'native':
             # Apex DDP preferred unless native amp is activated
@@ -638,6 +637,9 @@ def main():
                 # save proper checkpoint with eval metric
                 save_metric = eval_metrics[eval_metric]
                 best_metric, best_epoch = saver.save_checkpoint(epoch, metric=save_metric)
+                
+                #TODO: Save the SSA model seperately
+                breakpoint()
                 _logger.info('*** Best metric: {0} (epoch {1})'.format(best_metric, best_epoch))
 
     except KeyboardInterrupt:

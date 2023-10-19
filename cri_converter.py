@@ -255,9 +255,13 @@ class CRI_Converter():
         self.maxPool_neuron = defaultdict(list)
 
         #For matrix multiplication testing only
-        self.mul_axon = defaultdict(list)
-        self.mul_neuron = defaultdict(list)
-        self.mul_output = []
+        self.mul_axon1 = defaultdict(list)
+        self.mul_neuron1 = defaultdict(list)
+        self.mul_output1 = []
+        
+        self.mul_axon2 = defaultdict(list)
+        self.mul_neuron2 = defaultdict(list)
+        self.mul_output2 = []
     
     '''Given an img, encode it into spikes and then convert it to axons lists
     '''
@@ -301,17 +305,23 @@ class CRI_Converter():
     '''Convert the q,k,v output from spikingjelly network 
     into spikes input for multiplication testing'''
     def input_converter_mul(self, q, k, v):
-        inputs = [q, k, v]
+        inputs = [q, k, v.transpose(-1,-2)]
         batch = []
         
         for b in range(q.shape[0]):
-            input_spike = []
+            first_input, second_input, input_spikes = [], [], []
             offset = 0
             for i in range(len(inputs)):
                 spikes = ['a' + str(idx + offset) for idx, axon in enumerate(inputs[i][b].flatten()) if axon != 0]
-                input_spike.extend(spikes)
+                if i < 2:
+                    first_input.extend(spikes)  
+                else:
+                    second_input.extend(spikes)
                 offset += np.prod(inputs[i][b].shape)
-            batch.append(input_spike)
+            
+            input_spikes = [first_input, second_input]
+
+            batch.append(input_spikes)
 
         return batch
                 
@@ -491,7 +501,7 @@ class CRI_Converter():
         c, _, d = y.shape
         
         
-        breakpoint()
+        # breakpoint()
 
         # x_flatten = x.flatten() # (h*w)
         # y_flatten = y.transpose().flatten() #(d*w)
@@ -516,10 +526,10 @@ class CRI_Converter():
                         self.neuron_dict[neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
                                                         self.v_threshold/2))
                         if test == 1:
-                            self.mul_axon['a'+neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
+                            self.mul_axon1['a'+neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
                                                         self.v_threshold/2))
                         if test == 2:
-                            self.mul_neuron[neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
+                            self.mul_axon2['a'+neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
                                                         self.v_threshold/2))
 
         #Generates the synapses between input y and the first layer of dummy neurons
@@ -529,8 +539,11 @@ class CRI_Converter():
                     for i in range(h):
                         self.neuron_dict[neuron].append((first_layer[chanIdx, i, rowIdx, idx], \
                                                         self.v_threshold/2))
-                        if test != 0:
-                            self.mul_axon['a'+neuron].append((first_layer[chanIdx, i, rowIdx, idx], \
+                        if test == 1:
+                            self.mul_axon1['a'+neuron].append((first_layer[chanIdx, i, rowIdx, idx], \
+                                                        self.v_threshold/2))
+                        if test == 2:
+                            self.mul_axon2['a'+neuron].append((first_layer[chanIdx, i, rowIdx, idx], \
                                                         self.v_threshold/2))
         
         
@@ -542,18 +555,26 @@ class CRI_Converter():
                         # breakpoint()
                         self.neuron_dict[neuron].append((second_layer[chanIdx, mIdx, colIdx], \
                                                     self.v_threshold))
-                        if test != 0:
-                            self.mul_neuron[neuron].append((second_layer[chanIdx, mIdx, colIdx], \
+                        if test == 1:
+                            self.mul_neuron1[neuron].append((second_layer[chanIdx, mIdx, colIdx], \
+                                                        self.v_threshold))
+                        if test == 2:
+                            self.mul_neuron2[neuron].append((second_layer[chanIdx, mIdx, colIdx], \
                                                         self.v_threshold))
         
         # breakpoint()
         # print(f'outputshape: {self.curr_input.shape}')
         self.curr_input = second_layer
-        if test == 2:
+        if test == 1:
             self.output_start_idx = int(second_layer.flatten()[0])
             for output_neuron in second_layer.flatten():
-                self.mul_neuron[output_neuron] = []
-            self.mul_output = second_layer.flatten().tolist()
+                self.mul_neuron1[output_neuron] = []
+            self.mul_output1 = second_layer.flatten().tolist()
+        if test == 2:
+            # self.output_start_idx = int(second_layer.flatten()[0])
+            for output_neuron in second_layer.flatten():
+                self.mul_neuron2[output_neuron] = []
+            self.mul_output2 = second_layer.flatten().tolist()
 
 
     def _sparse_converter(self, layer):
@@ -798,22 +819,6 @@ class CRI_Converter():
         print("Total number of connections between hidden and output layers: ", self.total_neuronSyn)
         print("Max fan out of neuron: ", self.max_fan)
         
-    def _cri_fanout_test(self):
-        for key in self.mul_axon.keys():
-            self.total_axonSyn += len(self.mul_axon[key])
-            if len(self.mul_axon[key]) > self.max_fan:
-                self.max_fan = len(self.mul_axon[key])
-        print("Total number of connections between axon and neuron: ", self.total_axonSyn)
-        print("Max fan out of axon: ", self.max_fan)
-        print('---')
-        print("Number of neurons: ", len(self.mul_neuron))
-        self.max_fan = 0
-        for key in self.mul_neuron.keys():
-            self.total_neuronSyn += len(self.mul_neuron[key])
-            if len(self.mul_neuron[key]) > self.max_fan:
-                self.max_fan = len(self.mul_neuron[key])
-        print("Total number of connections between hidden and output layers: ", self.total_neuronSyn)
-        print("Max fan out of neuron: ", self.max_fan)
     
     def run_CRI_hw(self,inputList,hardwareNetwork):
         predictions = []
@@ -889,23 +894,73 @@ class CRI_Converter():
             predictions.append(spikeRate.index(max(spikeRate)))
         return predictions
     
-    #Function used for maxpooling testing only 
+    #Function used for SSA testing only 
     #Only process a batch of input for a single time step 
-    def run_CRI_sw_testing(self,inputList,hardwareNetwork):
+    def run_CRI_sw_ssa_testing(self,inputList,softwareNetwork1, softwareNetwork2):
         # each image
         output = []
         for currInput in tqdm(inputList):
+            softwareNetwork1.simpleSim.initialize_sim_vars(len(self.mul_neuron1))
+            # softwareNetwork2.simpleSim.initialize_sim_vars(len(self.mul_neuron2))
+            
+            # Given the network is 5 layers, feed in the two inputs at different time steps
+            spikeOut1 = softwareNetwork1.step(currInput[0], membranePotential=False)
+            
+            spikeOut2 = softwareNetwork1.step([], membranePotential=False)
+            
+            spikeOut3 = softwareNetwork1.step([], membranePotential=False)
+            
+            spikeOut = spikeOut1 + spikeOut2 + spikeOut3
+            spikeIn = []
+            for i in range(len(spikeOut)):
+                spikeIn.append('a'+str(int(spikeOut[i])-112))
+                # breakpoint()
+                
+            # if len(currInput[1]) > 0:
+            #     breakpoint()
+                   
+            for i in range(len(currInput[1])):
+                currInput[1][i] = 'a' + str(int(currInput[1][i][1:])-16)
+            
+                
+            softwareNetwork1.simpleSim.initialize_sim_vars(len(self.mul_neuron1))
+
+            swSpike1 = softwareNetwork1.step(currInput[1]+spikeIn, membranePotential=False)
+            spikeIdx1 = [int(spike) - self.output_start_idx for spike in swSpike1] 
+            
+            swSpike2 = softwareNetwork1.step([], membranePotential=False)
+            spikeIdx2 = [int(spike) - self.output_start_idx for spike in swSpike2] 
+            
+            swSpike3 = softwareNetwork1.step([], membranePotential=False)
+            spikeIdx3 = [int(spike) - self.output_start_idx for spike in swSpike3] 
+            
+            output.append(spikeIdx1+ spikeIdx2 + spikeIdx3)    
+            
+#             if len(spikeIdx1) > 0 or len(spikeIdx2) > 0 or len(spikeIdx3) > 0:
+#                 breakpoint()
+            
+        return spikeOut, output 
+    
+    #Function used for maxpooling testing only 
+    #Only process a batch of input for a single time step 
+    def run_CRI_sw_testing(self,inputList,softwareNetwork):
+        # each image
+        output = []
+        for currInput in tqdm(inputList):
+            
            
-            swSpike = hardwareNetwork.step(currInput, membranePotential=False)
+            swSpike = softwareNetwork.step(currInput, membranePotential=False)
             spikeIdx1 = [int(spike) - self.output_start_idx for spike in swSpike]
             # Empty input for output delay
-            swSpike = hardwareNetwork.step([], membranePotential=False)
+            swSpike = softwareNetwork.step([], membranePotential=False)
             spikeIdx2 = [int(spike) - self.output_start_idx for spike in swSpike]
             # breakpoint()
             # Additional empty input for phase delay since the network is only 2 layers
-            swSpike = hardwareNetwork.step([], membranePotential=False)
+            swSpike = softwareNetwork.step([], membranePotential=False)
             spikeIdx3 = [int(spike) - self.output_start_idx for spike in swSpike] 
+            
             output.append(spikeIdx1+spikeIdx2+spikeIdx3)    
+            
         return output 
     
     def run_CRI_hw_testing(self,inputList,softwareNetwork):
