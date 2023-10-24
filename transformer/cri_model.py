@@ -1,16 +1,95 @@
 import torch
 import torch.nn as nn
-from spikingjelly.clock_driven.neuron import MultiStepLIFNode
-from timm.models.layers import to_2tuple, trunc_normal_, DropPath
-from timm.models.registry import register_model
-from timm.models.vision_transformer import _cfg
+from spikingjelly.activation_based import neuron
+# from timm.models.layers import to_2tuple, trunc_normal_
+# from timm.models.registry import register_model
+# from timm.models.vision_transformer import _cfg
 import torch.nn.functional as F
 from functools import partial
 import numpy as np 
 __all__ = ['spikformer']
 from torch.utils.tensorboard import SummaryWriter
-from quant import act_quantization
-    
+# from quant import act_quantization
+
+def weight_quantization(b):
+
+    def uniform_quant(x, b):
+        xdiv = x.mul((2 ** b - 1))
+        xhard = xdiv.round().div(2 ** b - 1)
+        #print('uniform quant bit: ', b)
+        return xhard
+
+    class _pq(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, input, alpha):
+            input.div_(alpha)                          # weights are first divided by alpha
+            input_c = input.clamp(min=-1, max=1)       # then clipped to [-1,1]
+            sign = input_c.sign()
+            input_abs = input_c.abs()
+            input_q = uniform_quant(input_abs, b).mul(sign)
+            ctx.save_for_backward(input, input_q)
+            input_q = input_q.mul(alpha)               # rescale to the original range
+            return input_q
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            grad_input = grad_output.clone()             # grad for weights will not be clipped
+            input, input_q = ctx.saved_tensors
+            i = (input.abs()>1.).float()     # >1 means clipped. # output matrix is a form of [True, False, True, ...]
+            sign = input.sign()              # output matrix is a form of [+1, -1, -1, +1, ...]
+            #grad_alpha = (grad_output*(sign*i + (input_q-input)*(1-i))).sum()
+            grad_alpha = (grad_output*(sign*i + (0.0)*(1-i))).sum()
+            # above line, if i = True,  and sign = +1, "grad_alpha = grad_output * 1"
+            #             if i = False, "grad_alpha = grad_output * (input_q-input)"
+            grad_input = grad_input*(1-i)
+            return grad_input, grad_alpha
+
+    return _pq().apply
+
+class weight_quantize_fn(nn.Module):
+    def __init__(self, w_bit, wgt_alpha):
+        super(weight_quantize_fn, self).__init__()
+        self.w_bit = w_bit-1
+        self.wgt_alpha = wgt_alpha
+        self.weight_q = weight_quantization(b=self.w_bit)
+        # self.register_parameter('wgt_alpha', Parameter(torch.tensor(3.0)))
+    def forward(self, weight):
+        # mean = weight.data.mean()
+        # std = weight.data.std()
+        # weight = weight.add(-mean).div(std)      # weights normalization
+        weight_q = self.weight_q(weight, self.wgt_alpha)
+
+        return weight_q
+
+def act_quantization(b):
+
+    def uniform_quant(x, b=4):
+        xdiv = x.mul(2 ** b - 1)
+        xhard = xdiv.round().div(2 ** b - 1)
+        return xhard
+
+    class _uq(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, input, alpha):
+            input=input.div(alpha)
+            input_c = input.clamp(max=1)  # Mingu edited for Alexnet
+            input_q = uniform_quant(input_c, b)
+            ctx.save_for_backward(input, input_q)
+            input_q = input_q.mul(alpha)
+            return input_q
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            grad_input = grad_output.clone()
+            input, input_q = ctx.saved_tensors
+            i = (input > 1.).float()
+            #grad_alpha = (grad_output * (i + (input_q - input) * (1 - i))).sum()
+            grad_alpha = (grad_output * (i + (0.0)*(1-i))).sum()
+            grad_input = grad_input*(1-i)
+            return grad_input, grad_alpha
+
+    return _uq().apply
+
 def activation_visual(x, layer):
     writer = SummaryWriter('runs/transformer/activations')
     img_batch = np.array(x.flatten(0, 1).cpu())
@@ -38,11 +117,11 @@ class MLP(nn.Module):
         hidden_features = hidden_features or in_features
         self.fc1_linear = nn.Linear(in_features, hidden_features)
         self.fc1_bn = nn.BatchNorm1d(hidden_features)
-        self.fc1_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.fc1_lif = neuron.LIFNode(tau=2.0)
 
         self.fc2_linear = nn.Linear(hidden_features, out_features)
         self.fc2_bn = nn.BatchNorm1d(out_features)
-        self.fc2_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.fc2_lif = neuron.LIFNode(tau=2.0)
 
         self.c_hidden = hidden_features
         self.c_output = out_features
@@ -69,22 +148,21 @@ class SSA(nn.Module):
         self.scale = 0.125
         self.q_linear = nn.Linear(dim, dim)
         self.q_bn = nn.BatchNorm1d(dim)
-        self.q_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.q_lif = neuron.LIFNode(tau=2.0)
 
         self.k_linear = nn.Linear(dim, dim)
         self.k_bn = nn.BatchNorm1d(dim)
-        self.k_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.k_lif = neuron.LIFNode(tau=2.0)
 
         self.v_linear = nn.Linear(dim, dim)
         self.v_bn = nn.BatchNorm1d(dim)
-        self.v_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.v_lif = neuron.LIFNode(tau=2.0)
         #NOTE: Threshld should not be quantized for attn_lif
-        self.attn_lif = MultiStepLIFNode(tau=2.0, v_threshold=0.5, detach_reset=True)
+        self.attn_lif = neuron.LIFNode(tau=2.0, v_threshold = 0.5)
 
         self.proj_linear = nn.Linear(dim, dim)
         self.proj_bn = nn.BatchNorm1d(dim)
-        self.proj_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
-        
+        self.proj_lif = neuron.LIFNode(tau=2.0)
         #NOTE: testing the accuracy w/ single bit quantization
         self.act_alq = act_quantization(1) #activation quantization 
         self.act_alpha = 8.0 #scaling factor
@@ -108,31 +186,64 @@ class SSA(nn.Module):
         v_linear_out = self.v_bn(v_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T,B, N, C).contiguous()
         v_linear_out = self.v_lif(v_linear_out)
         v = v_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
-        # breakpoint()
+        
         attn = (q @ k.transpose(-2, -1)) 
         
-        attn = torch.tensor(self.act_alq(attn, self.act_alpha), requires_grad=True)
+        attn = self.act_alq(attn, self.act_alpha).clone().detach().requires_grad_(True)
         
         x = attn @ v
         
-        x = torch.tensor(self.act_alq(x, self.act_alpha), requires_grad=True)
-        # breakpoint()
+        x = self.act_alq(x, self.act_alpha).clone().detach().requires_grad_(True)
+        
         
         
         x = x.transpose(2, 3).reshape(T, B, N, C).contiguous()
         x = self.attn_lif(x)
+    
         x = x.flatten(0, 1)
         x = self.proj_lif(self.proj_bn(self.proj_linear(x).transpose(-1, -2)).transpose(-1, -2).reshape(T, B, N, C))
         return x
+    
+    def forward_qkv(self, x):
+        T,B,N,C = x.shape # C: embed dim
+                        
+
+        x_for_qkv = x.flatten(0, 1)  # TB, N, C
+        q_linear_out = self.q_linear(x_for_qkv)  # [TB, N, C]
+        q_linear_out = self.q_bn(q_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T, B, N, C).contiguous()
+        q_linear_out = self.q_lif(q_linear_out)
+        q = q_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
+
+        k_linear_out = self.k_linear(x_for_qkv)
+        k_linear_out = self.k_bn(k_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T,B, N, C).contiguous()
+        k_linear_out = self.k_lif(k_linear_out)
+        k = k_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
+
+        v_linear_out = self.v_linear(x_for_qkv)
+        v_linear_out = self.v_bn(v_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T,B, N, C).contiguous()
+        v_linear_out = self.v_lif(v_linear_out)
+        v = v_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
+        
+        return q,k,v
+    
+    def forward_test(self, x):
+        T,B,N,C = x.shape
+        x = x.flatten(0, 1)
+        x = self.proj_lif(self.proj_bn(self.proj_linear(x).transpose(-1, -2)).transpose(-1, -2).reshape(T, B, N, C))
+        return x
+        
 
 class Block(nn.Module):
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, sr_ratio=1):
         super().__init__()
-        self.norm1 = norm_layer(dim) #Note: layer norm wasn't used in the actual implementation
+        # Note: layer norm wasn't used in the actual implementation
+        # self.norm1 = norm_layer(dim) 
+        # self.norm2 = norm_layer(dim)
+        
         self.attn = SSA(dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale,
                               attn_drop=attn_drop, proj_drop=drop, sr_ratio=sr_ratio)
-        self.norm2 = norm_layer(dim)
+        
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = MLP(in_features=dim, hidden_features=mlp_hidden_dim, drop=drop)
 
@@ -143,39 +254,50 @@ class Block(nn.Module):
         x = x + self.mlp(x)
 
         return x
+    
+    def forward_test(self, x, x_attn):
+        x_attn = self.attn.forward_test(x_attn)
+        x = x + x_attn
+        x = x + self.mlp(x)
+
+        return x
+    
+    def forward_qkv(self, x):
+        q,k,v = self.attn.forward_qkv(x)
+        return q,k,v
 
 
 class SPS(nn.Module):
     def __init__(self, img_size_h=28, img_size_w=28, patch_size=7, in_channels=1, embed_dims=16):
         super().__init__()
         self.image_size = [img_size_h, img_size_w] #32*32
-        patch_size = to_2tuple(patch_size)
-        self.patch_size = patch_size
+        # patch_size = []
+        self.patch_size = [patch_size, patch_size]
         self.C = in_channels #3
         
-        self.H, self.W = self.image_size[0] // patch_size[0], self.image_size[1] // patch_size[1]
+        self.H, self.W = self.image_size[0] // self.patch_size[0], self.image_size[1] // self.patch_size[1]
         self.num_patches = self.H * self.W #1024
         self.proj_conv = nn.Conv2d(in_channels, embed_dims//8, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn = nn.BatchNorm2d(embed_dims//8)
-        self.proj_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.proj_lif = neuron.LIFNode(tau=2.0)
 
         self.proj_conv1 = nn.Conv2d(embed_dims//8, embed_dims//4, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn1 = nn.BatchNorm2d(embed_dims//4)
-        self.proj_lif1 = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.proj_lif1 = neuron.LIFNode(tau=2.0)
 
         self.proj_conv2 = nn.Conv2d(embed_dims//4, embed_dims//2, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn2 = nn.BatchNorm2d(embed_dims//2)
-        self.proj_lif2 = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.proj_lif2 = neuron.LIFNode(tau=2.0)
         self.maxpool2 = torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)
 
         self.proj_conv3 = nn.Conv2d(embed_dims//2, embed_dims, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn3 = nn.BatchNorm2d(embed_dims)
-        self.proj_lif3 = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.proj_lif3 = neuron.LIFNode(tau=2.0)
         self.maxpool3 = torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)
 
         self.rpe_conv = nn.Conv2d(embed_dims, embed_dims, kernel_size=3, stride=1, padding=1, bias=False)
         self.rpe_bn = nn.BatchNorm2d(embed_dims)
-        self.rpe_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.rpe_lif = neuron.LIFNode(tau=2.0)
 
     def forward(self, x):
         
@@ -257,7 +379,7 @@ class Spikformer(nn.Module):
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
+            torch.nn.init.trunc_normal_(m.weight, std=.02)
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
@@ -273,7 +395,32 @@ class Spikformer(nn.Module):
         for blk in block:
             x = blk(x)
         return x.mean(2)
+    
+    def forward_qkv(self, x):
+        x = (x.unsqueeze(0)).repeat(self.T, 1, 1, 1, 1)
+        block = getattr(self, f"block")
+        patch_embed = getattr(self, f"patch_embed")
 
+        x = patch_embed(x)
+        
+        q, k, v = block[0].forward_qkv(x)
+        return q,k,v
+    
+    def forward_embed(self,x):
+        x = (x.unsqueeze(0)).repeat(self.T, 1, 1, 1, 1)
+        block = getattr(self, f"block")
+        patch_embed = getattr(self, f"patch_embed")
+
+        x = patch_embed(x)
+        return x
+    
+    def forward_test(self, x, x_attn):
+        block = getattr(self, f"block")
+        x = block[0].forward_test(x, x_attn)
+        x = x.mean(2)
+        x = self.head(x.mean(0)) 
+        return x    
+        
     def forward(self, x):
         x = (x.unsqueeze(0)).repeat(self.T, 1, 1, 1, 1)
         x = self.forward_features(x)
@@ -281,7 +428,7 @@ class Spikformer(nn.Module):
         return x
 
 
-@register_model
+# @register_model
 def spikformer(pretrained=False, **kwargs):
     model = Spikformer(
         # img_size_h=224, img_size_h=224,
@@ -290,7 +437,7 @@ def spikformer(pretrained=False, **kwargs):
         # norm_layer=partial(nn.LayerNorm, eps=1e-6), depths=12, sr_ratios=1,
         **kwargs
     )
-    model.default_cfg = _cfg()
+    # model.default_cfg = _cfg()
     return model
 
 

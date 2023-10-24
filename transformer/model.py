@@ -112,12 +112,12 @@ class SSA(nn.Module):
         attn = (q @ k.transpose(-2, -1)) 
         
         breakpoint()
-        attn = torch.tensor(self.act_alq(attn, self.act_alpha), requires_grad=True)
+        attn = self.act_alq(attn, self.act_alpha).clone().detach().requires_grad_(True)
         
         
         x = attn @ v
         
-        x = torch.tensor(self.act_alq(x, self.act_alpha), requires_grad=True)
+        x = self.act_alq(x, self.act_alpha).clone().detach().requires_grad_(True)
         # breakpoint()
         
         

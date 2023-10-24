@@ -305,7 +305,7 @@ class CRI_Converter():
     '''Convert the q,k,v output from spikingjelly network 
     into spikes input for multiplication testing'''
     def input_converter_mul(self, q, k, v):
-        inputs = [q, k, v.transpose(-1,-2)]
+        inputs = [q[0], k[0], v[0].transpose(-1,-2)]
         batch = []
         
         for b in range(q.shape[0]):
@@ -413,7 +413,7 @@ class CRI_Converter():
         print(f'Input layer shape(infeature, outfeature):\
                {self.curr_input.shape} {layer.out_features}')
         # breakpoint()
-        output_shape = (self.input_shape[0], self.embed_dim, layer.out_features//self.embed_dim) #C,N,D
+        output_shape = (self.input_shape[0], self.embed_dim, self.embed_dim) #C,N,N
         
         #flatten the layer 
         output = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + np.prod(output_shape))])
@@ -896,42 +896,45 @@ class CRI_Converter():
     
     #Function used for SSA testing only 
     #Only process a batch of input for a single time step 
-    def run_CRI_sw_ssa_testing(self,inputList,softwareNetwork1, softwareNetwork2):
+    def run_CRI_sw_ssa_testing(self,inputList,softwareNetwork):
         # each image
         output = []
         for currInput in tqdm(inputList):
-            softwareNetwork1.simpleSim.initialize_sim_vars(len(self.mul_neuron1))
-            # softwareNetwork2.simpleSim.initialize_sim_vars(len(self.mul_neuron2))
+            softwareNetwork.simpleSim.initialize_sim_vars(len(self.mul_neuron1))
             
             # Given the network is 5 layers, feed in the two inputs at different time steps
-            spikeOut1 = softwareNetwork1.step(currInput[0], membranePotential=False)
+            spikeOut1 = softwareNetwork.step(currInput[0], membranePotential=False)
             
-            spikeOut2 = softwareNetwork1.step([], membranePotential=False)
+            spikeOut2 = softwareNetwork.step([], membranePotential=False)
             
-            spikeOut3 = softwareNetwork1.step([], membranePotential=False)
+            spikeOut3 = softwareNetwork.step([], membranePotential=False)
             
             spikeOut = spikeOut1 + spikeOut2 + spikeOut3
             spikeIn = []
             for i in range(len(spikeOut)):
-                spikeIn.append('a'+str(int(spikeOut[i])-112))
+                #Offset = Total # of neurons and axon in the first model
+                offset = self.embed_dim * self.embed_dim * 3 + self.embed_dim * self.embed_dim * self.embed_dim 
+                spikeIn.append('a'+str(int(spikeOut[i])-offset))
                 # breakpoint()
                 
             # if len(currInput[1]) > 0:
             #     breakpoint()
                    
             for i in range(len(currInput[1])):
-                currInput[1][i] = 'a' + str(int(currInput[1][i][1:])-16)
+                #Offset = N * N (starts from the second input)
+                offset = self.embed_dim * self.embed_dim
+                currInput[1][i] = 'a' + str(int(currInput[1][i][1:])-offset)
             
                 
-            softwareNetwork1.simpleSim.initialize_sim_vars(len(self.mul_neuron1))
+            softwareNetwork.simpleSim.initialize_sim_vars(len(self.mul_neuron1))
 
-            swSpike1 = softwareNetwork1.step(currInput[1]+spikeIn, membranePotential=False)
+            swSpike1 = softwareNetwork.step(currInput[1]+spikeIn, membranePotential=False)
             spikeIdx1 = [int(spike) - self.output_start_idx for spike in swSpike1] 
             
-            swSpike2 = softwareNetwork1.step([], membranePotential=False)
+            swSpike2 = softwareNetwork.step([], membranePotential=False)
             spikeIdx2 = [int(spike) - self.output_start_idx for spike in swSpike2] 
             
-            swSpike3 = softwareNetwork1.step([], membranePotential=False)
+            swSpike3 = softwareNetwork.step([], membranePotential=False)
             spikeIdx3 = [int(spike) - self.output_start_idx for spike in swSpike3] 
             
             output.append(spikeIdx1+ spikeIdx2 + spikeIdx3)    

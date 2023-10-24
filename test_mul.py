@@ -140,7 +140,7 @@ def main():
                                       leak=2**6)#IF
     else:
         # breakpoint()
-        softwareNetwork1 = CRI_network(dict(cri_convert.mul_axon1),
+        softwareNetwork = CRI_network(dict(cri_convert.mul_axon1),
                                       connections=dict(cri_convert.mul_neuron1),
                                       config=config,target='simpleSim', 
                                       outputs = cri_convert.mul_output1,
@@ -148,13 +148,13 @@ def main():
                                       perturbMag=8, #Zero randomness  
                                       leak=2**6)#IF
         
-        softwareNetwork2 = CRI_network(dict(cri_convert.mul_axon2),
-                                      connections=dict(cri_convert.mul_neuron2),
-                                      config=config,target='simpleSim', 
-                                      outputs = cri_convert.mul_output2,
-                                      coreID=1, 
-                                      perturbMag=8, #Zero randomness  
-                                      leak=2**6)#IF
+        # softwareNetwork2 = CRI_network(dict(cri_convert.mul_axon2),
+        #                               connections=dict(cri_convert.mul_neuron2),
+        #                               config=config,target='simpleSim', 
+        #                               outputs = cri_convert.mul_output2,
+        #                               coreID=1, 
+        #                               perturbMag=8, #Zero randomness  
+        #                               leak=2**6)#IF
 
     cri_convert.bias_start_idx = 0 #add this to the end of conversion
     loss_fun = nn.MSELoss()
@@ -195,7 +195,7 @@ def main():
             if args.hardware:
                 cri_output = cri_convert.run_CRI_hw_testing(cri_input,hardwareNetwork)
             else:
-                first_out, cri_output = cri_convert.run_CRI_sw_ssa_testing(cri_input,softwareNetwork1, softwareNetwork2)
+                first_out, cri_output = cri_convert.run_CRI_sw_ssa_testing(cri_input,softwareNetwork)
             
             
             #reconstruct the output matrix from spike idices

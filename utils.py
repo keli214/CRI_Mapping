@@ -89,7 +89,9 @@ def train(args, net, train_loader, test_loader, device, scaler):
                     loss.backward()
                     optimizer.step()
             else:
-                out_fr = net(img)
+                for t in range(args.num_steps):
+                    out_fr += net(img)
+                out_fr = out_fr/args.num_steps   
                 loss = loss_fun(out_fr, label_onehot)
                 if args.amp:
                     scaler.scale(loss).backward()
@@ -133,7 +135,9 @@ def train(args, net, train_loader, test_loader, device, scaler):
                         out_fr += net(encoded_img)
                     out_fr = out_fr/args.num_steps   
                 else:
-                    out_fr = net(img)
+                    for t in range(args.num_steps):
+                        out_fr += net(img)
+                    out_fr = out_fr/args.num_steps 
                     
                 loss = loss_fun(out_fr, label_onehot)
 
@@ -165,6 +169,9 @@ def train(args, net, train_loader, test_loader, device, scaler):
 
         if save_max:
             torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_max_T_{args.num_steps}_lr_{args.lr}.pth'))
+            
+            checkpoint_ssa = {'ssa': net.block[0].attn.state_dict()}
+            torch.save(checkpoint_ssa, os.path.join(args.out_dir, f'checkpoint_max_ssa_T_{args.num_steps}_lr_{args.lr}.pth'))
 
         torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_latest_T_{args.num_steps}_lr_{args.lr}.pth'))
 
@@ -202,11 +209,15 @@ def validate(args, net, test_loader, device):
                     out_fr += net(encoded_img)
                 out_fr = out_fr/args.num_steps
             else:
-                out_fr = net(img)
+                for t in range(args.num_steps):
+                    out_fr += net(img)
+                out_fr = out_fr/args.num_steps
+
                 
             loss = loss_fun(out_fr, label_onehot)
             test_samples += label.numel()
             test_loss += loss.item() * label.numel()
+            
             test_acc += (out_fr.argmax(1) == label).float().sum().item()
             functional.reset_net(net) #reset the membrane potential after each img
         test_time = time.time()
