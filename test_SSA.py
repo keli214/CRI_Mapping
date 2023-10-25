@@ -202,7 +202,7 @@ def main():
             
             
             if args.hardware:
-                cri_output = cri_convert.run_CRI_hw_testing(cri_input,hardwareNetwork)
+                first_out, cri_output = cri_convert.run_CRI_hw_ssa_testing(cri_input,hardwareNetwork)
             else:
                 first_out, cri_output = cri_convert.run_CRI_sw_ssa_testing(cri_input,softwareNetwork)
             

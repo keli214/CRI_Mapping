@@ -894,6 +894,50 @@ class CRI_Converter():
             predictions.append(spikeRate.index(max(spikeRate)))
         return predictions
     
+    def run_CRI_hw_ssa_testing(self, inputList,hardwareNetwork):
+        output = []
+        for currInput in tqdm(inputList):
+            # initiate the hardware for each image
+            cri_simulations.FPGA_Execution.fpga_controller.clear(
+                len(self.mul_neuron1), False, 0
+            )  ##Num_neurons, simDump, coreOverride
+            
+            # Given the network is 5 layers, feed in the two inputs at different time steps          
+            spikeOut1, latency, hbmAcc = hardwareNetwork.step(currInput[0], membranePotential=False)
+            
+            spikeOut2, _, _ = hardwareNetwork.step([], membranePotential=False)
+            
+            spikeOut3, _, _ = hardwareNetwork.step([], membranePotential=False)
+            
+            spikeOut = spikeOut1 + spikeOut2 + spikeOut3
+            spikeIn = []
+            for i in range(len(spikeOut)):
+                #Offset = Total # of neurons and axon in the first model
+                offset = self.embed_dim * self.embed_dim * 3 + self.embed_dim * self.embed_dim * self.embed_dim 
+                spikeIn.append('a'+str(int(spikeOut[i])-offset))
+                
+            for i in range(len(currInput[1])):
+                #Offset = N * N (starts from the second input)
+                offset = self.embed_dim * self.embed_dim
+                currInput[1][i] = 'a' + str(int(currInput[1][i][1:])-offset)
+            
+            cri_simulations.FPGA_Execution.fpga_controller.clear(
+                len(self.mul_neuron1), False, 0
+            )  ##Num_neurons, simDump, coreOverride
+            
+            hwSpike1, _, _ = hardwareNetwork.step(currInput[1]+spikeIn, membranePotential=False)
+            spikeIdx1 = [int(spike) - self.output_start_idx for spike in hwSpike1] 
+            
+            hwSpike2 = hardwareNetwork.step([], membranePotential=False)
+            spikeIdx2 = [int(spike) - self.output_start_idx for spike in hwSpike2] 
+            
+            hwSpike3 = hardwareNetwork.step([], membranePotential=False)
+            spikeIdx3 = [int(spike) - self.output_start_idx for spike in hwSpike3] 
+            
+            output.append(spikeIdx1+ spikeIdx2 + spikeIdx3)    
+            
+        return spikeOut, output 
+    
     #Function used for SSA testing only 
     #Only process a batch of input for a single time step 
     def run_CRI_sw_ssa_testing(self,inputList,softwareNetwork):
