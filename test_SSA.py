@@ -157,8 +157,8 @@ def main():
     
     hardwareNetwork, softwareNetwork = None, None
     if args.hardware:
-        hardwareNetwork = CRI_network(dict(cri_convert.mul_axon),
-                                      connections=dict(cri_convert.mul_neuron),
+        hardwareNetwork = CRI_network(dict(cri_convert.mul_axon1),
+                                      connections=dict(cri_convert.mul_neuron1),
                                       config=config,target='CRI', 
                                       outputs =cri_convert.mul_output1,
                                       coreID=1, 
