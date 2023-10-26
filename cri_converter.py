@@ -1,220 +1,24 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import copy
 # from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 # from spikingjelly.activation_based.neuron import IFNode, LIFNode
-# from quant.quant_layer import *
 from snntorch import spikegen 
 from spikingjelly.activation_based import encoding
 import csv 
 import time
 from tqdm import tqdm
 from collections import defaultdict
-# from hs_api.api import CRI_network
-# import hs_bridge
+from hs_api.api import CRI_network
+import hs_bridge
 import snntorch as snn
 import multiprocessing as mp
 import numpy as np
 from utils import isSNNLayer
 #import sparselinear as sl
 
-def weight_quantization(b):
-
-    def uniform_quant(x, b):
-        xdiv = x.mul((2 ** b - 1))
-        xhard = xdiv.round().div(2 ** b - 1)
-        #print('uniform quant bit: ', b)
-        return xhard
-
-    class _pq(torch.autograd.Function):
-        @staticmethod
-        def forward(ctx, input, alpha):
-            input.div_(alpha)                          # weights are first divided by alpha
-            input_c = input.clamp(min=-1, max=1)       # then clipped to [-1,1]
-            sign = input_c.sign()
-            input_abs = input_c.abs()
-            input_q = uniform_quant(input_abs, b).mul(sign)
-            ctx.save_for_backward(input, input_q)
-            input_q = input_q.mul(alpha)               # rescale to the original range
-            return input_q
-
-        @staticmethod
-        def backward(ctx, grad_output):
-            grad_input = grad_output.clone()             # grad for weights will not be clipped
-            input, input_q = ctx.saved_tensors
-            i = (input.abs()>1.).float()     # >1 means clipped. # output matrix is a form of [True, False, True, ...]
-            sign = input.sign()              # output matrix is a form of [+1, -1, -1, +1, ...]
-            # grad_alpha = (grad_output*(sign*i + (input_q-input)*(1-i))).sum()
-            grad_alpha = (grad_output*(sign*i + (0.0)*(1-i))).sum()
-            # above line, if i = True,  and sign = +1, "grad_alpha = grad_output * 1"
-            #             if i = False, "grad_alpha = grad_output * (input_q-input)"
-            grad_input = grad_input*(1-i)
-            return grad_input, grad_alpha
-
-    return _pq().apply
-
-class weight_quantize_fn(nn.Module):
-    def __init__(self, w_bit, w_alpha):
-        super(weight_quantize_fn, self).__init__()
-        self.w_bit = w_bit-1
-        self.weight_q = weight_quantization(b=self.w_bit)
-        self.wgt_alpha = w_alpha
-    def forward(self, weight):
-        weight_q = self.weight_q(weight, self.wgt_alpha)
-        return weight_q
-
-class Quantize_Network():
-    def __init__(self, w_alpha = 1, dynamic_alpha = False):
-        self.w_alpha = w_alpha #Range of the parameter (CSNN:4, Transformer: 5)
-        self.dynamic_alpha = dynamic_alpha
-        self.v_threshold = None
-        self.w_bits = 16
-        self.w_delta = self.w_alpha/(2**(self.w_bits-1)-1)
-        self.weight_quant = weight_quantize_fn(self.w_bits, self.w_alpha)
-    
-    def quantize(self, model):
-        new_model = copy.deepcopy(model)
-        start_time = time.time()
-        module_names = list(new_model._modules)
-        
-        for k, name in enumerate(module_names):
-            if len(list(new_model._modules[name]._modules)) > 0 and not isSNNLayer(new_model._modules[name]):
-                print('Quantized: ',name)
-                if name == 'block':
-                    new_model._modules[name] = self.quantize_block(new_model._modules[name])
-                else:
-                    # if name == 'attn':
-                    #     continue
-                    new_model._modules[name] = self.quantize(new_model._modules[name])
-            else:
-                print('Quantized: ',name)
-                if name == 'attn_lif':
-                    continue
-                quantized_layer = self._quantize(new_model._modules[name])
-                new_model._modules[name] = quantized_layer
-        
-        end_time = time.time()
-        print(f'Quantization time: {end_time - start_time}')
-        return new_model
-    
-    def quantize_block(self, model):
-        new_model = copy.deepcopy(model)
-        module_names = list(new_model._modules)
-        
-        for k, name in enumerate(module_names):
-            
-            if len(list(new_model._modules[name]._modules)) > 0 and not isSNNLayer(new_model._modules[name]):
-                if name.isnumeric() or name == 'attn' or name == 'mlp':
-                    print('Block Quantized: ',name)
-                    new_model._modules[name] = self.quantize_block(new_model._modules[name])
-                else:
-                    print('Block Unquantized: ', name)
-            else:
-                if name == 'attn_lif':
-                    continue
-                else:
-                    new_model._modules[name] = self._quantize(new_model._modules[name])
-        return new_model
-    
-    def _quantize(self, layer):
-        if isSNNLayer(layer):
-            return self._quantize_LIF(layer)
-
-        elif isinstance(layer, nn.Linear) or isinstance(layer, nn.Conv2d):
-            return self._quantize_layer(layer)
-        
-        else:
-            return layer
-        
-    def _quantize_layer(self, layer):
-        quantized_layer = copy.deepcopy(layer)
-        
-        if self.dynamic_alpha:
-            # weight_range = abs(max(layer.weight.flatten()) - min(layer.weight.flatten()))
-            self.w_alpha = abs(max(layer.weight.flatten()) - min(layer.weight.flatten()))
-            self.w_delta = self.w_alpha/(2**(self.w_bits-1)-1)
-            self.weight_quant = weight_quantize_fn(self.w_bits) #reinitialize the weight_quan
-            self.weight_quant.wgt_alpha = self.w_alpha
-        
-        layer.weight = nn.Parameter(self.weight_quant(layer.weight))
-        quantized_layer.weight = nn.Parameter(layer.weight/self.w_delta)
-        
-        if layer.bias is not None: #check if the layer has bias
-            layer.bias = nn.Parameter(self.weight_quant(layer.bias))
-            quantized_layer.bias = nn.Parameter(layer.bias/self.w_delta)
-        
-        
-        return quantized_layer
-
-    
-    def _quantize_LIF(self,layer):
-        
-        layer.v_threshold = layer.v_threshold/self.w_delta
-        self.v_threshold = layer.v_threshold
-        
-        return layer
-
-class BN_Folder():
-    def __init__(self):
-        super().__init__()
-        
-    def fold(self, model):
-
-        new_model = copy.deepcopy(model)
-
-        module_names = list(new_model._modules)
-
-        for k, name in enumerate(module_names):
-
-            if len(list(new_model._modules[name]._modules)) > 0:
-                
-                new_model._modules[name] = self.fold(new_model._modules[name])
-
-            else:
-                if isinstance(new_model._modules[name], nn.BatchNorm2d) or isinstance(new_model._modules[name], nn.BatchNorm1d):
-                    if isinstance(new_model._modules[module_names[k-1]], nn.Conv2d) or isinstance(new_model._modules[module_names[k-1]], nn.Linear):
-
-                        # Folded BN
-                        folded_conv = self._fold_conv_bn_eval(new_model._modules[module_names[k-1]], new_model._modules[name])
-
-                        # Replace old weight values
-                        # new_model._modules.pop(name) # Remove the BN layer
-                        new_model._modules[module_names[k]] = nn.Identity()
-                        new_model._modules[module_names[k-1]] = folded_conv # Replace the Convolutional Layer by the folded version
-
-        return new_model
-
-
-    def _bn_folding(self, prev_w, prev_b, bn_rm, bn_rv, bn_eps, bn_w, bn_b, model_2d):
-        if prev_b is None:
-            prev_b = bn_rm.new_zeros(bn_rm.shape)
-            
-        bn_var_rsqrt = torch.rsqrt(bn_rv + bn_eps)
-          
-        if model_2d:
-            w_fold = prev_w * (bn_w * bn_var_rsqrt).view(-1, 1, 1, 1)
-        else:
-            w_fold = prev_w * (bn_w * bn_var_rsqrt).view(-1, 1)
-        b_fold = (prev_b - bn_rm) * bn_var_rsqrt * bn_w + bn_b
-
-        return torch.nn.Parameter(w_fold), torch.nn.Parameter(b_fold)
-        
-    def _fold_conv_bn_eval(self, prev, bn):
-        assert(not (prev.training or bn.training)), "Fusion only for eval!"
-        fused_prev = copy.deepcopy(prev)
-        
-        if isinstance(bn, nn.BatchNorm2d):
-            fused_prev.weight, fused_prev.bias = self._bn_folding(fused_prev.weight, fused_prev.bias,
-                                 bn.running_mean, bn.running_var, bn.eps, bn.weight, bn.bias, True)
-        else:
-            fused_prev.weight, fused_prev.bias = self._bn_folding(fused_prev.weight, fused_prev.bias,
-                                 bn.running_mean, bn.running_var, bn.eps, bn.weight, bn.bias, False)
-
-        return fused_prev
-
-
-def pad_with(vector, pad_width, iaxis, kwargs):
+# Helper function for converting the Conv2d layer
+def _pad_with(vector, pad_width, iaxis, kwargs):
     pad_value = kwargs.get('padder', 10)
     vector[:pad_width[0]] = pad_value
     vector[-pad_width[1]:] = pad_value
@@ -442,50 +246,6 @@ class CRI_Converter():
         print(output.shape)
         self.neuron_offset += np.prod(output.shape)
         return output
-
-    
-    # """ Given two matrix, maps the matrix multiplication a@b into CRI neurons connections
-    
-    # Args:
-    #     a: a np array of strings with T*N*D neuron names
-    #     b: a np array of strings with T*N*D neuron names
-        
-    # """
-    # def _matrix_mul_cri(self, x, y):
-    #     #TODO: parallelize each time step 
-    #     print(f"x.shape: {x.shape}")
-    #     h, w = x.shape
-        
-    #     _, d = y.shape
-    #     x_flatten = x.flatten() # (h*w)
-    #     y_flatten = y.transpose().flatten() #(d*w)
-        
-    #     first_layer = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + h*w*d)])
-    #     # first_layer = first_layer.reshape(h*w*d)
-    #     self.neuron_offset += h*w*d
-        
-    #     second_layer = np.array([str(i) for i in range(self.neuron_offset, self.neuron_offset + h*d)])
-    #     # second_layer = second_layer.reshape(b, h*d)
-    #     self.neuron_offset += h*d
-        
-    #     for idx, neuron in enumerate(x_flatten):
-    #         for i in range(d):
-    #             # print(f"idx%w + w*i + w*d*(idx//w): {idx%w + w*i + w*d*(idx//w)}")
-    #             self.neuron_dict[neuron].extend([(first_layer[idx%w + w*i + w*d*(idx//w)], self.v_threshold)])
-        
-    #     for idx, neuron in enumerate(y_flatten):
-    #         for i in range(h):
-    #             # print(f"idx%(w*d): {idx%(w*d)}")
-    #             self.neuron_dict[neuron].append([(first_layer[idx%(w*d)], self.v_threshold)])
-        
-    #     # for r in tqdm(range(b)):
-    #     for idx, neuron in enumerate(first_layer):
-    #         # print(f"idx//w: {idx//w}")
-    #         self.neuron_dict[neuron].extend((second_layer[idx//w], self.v_threshold))
-        
-    #     second_layer = second_layer.reshape(h,d)
-    #     # print(f'outputshape: {self.curr_input.shape}')
-    #     self.curr_input = second_layer
     
     """ Testing method for matrix multiplication in HiAER Spike
     
@@ -681,7 +441,7 @@ class CRI_Converter():
         input_layer = input.reshape(input.shape[-2], input.shape[-1])
         #TODO: add padding of 0s
         print(f'Input.shape: {input_layer.shape}')
-        input_padded = np.pad(input_layer, 1, pad_with, padder=-1)
+        input_padded = np.pad(input_layer, 1, _pad_with, padder=-1)
         input_padded = input_padded.reshape((input.shape[0], input_padded.shape[0], input_padded.shape[1]))
         print(f'input_padded: {input_padded.shape}')
         start_time = time.time()
@@ -826,7 +586,7 @@ class CRI_Converter():
         total_time_cri = 0
         for currInput in inputList:
             # initiate the hardware for each image
-            cri_simulations.FPGA_Execution.fpga_controller.clear(
+            hs_bridge.FPGA_Execution.fpga_controller.clear(
                 len(self.output_neurons), False, 0
             )  ##Num_neurons, simDump, coreOverride
             spikeRate = [0] * len(self.output_neurons)
@@ -894,11 +654,11 @@ class CRI_Converter():
             predictions.append(spikeRate.index(max(spikeRate)))
         return predictions
     
-    def run_CRI_hw_ssa_testing(self, inputList,hardwareNetwork):
+    def _run_CRI_hw_ssa_testing(self, inputList,hardwareNetwork):
         output = []
         for currInput in tqdm(inputList):
             # initiate the hardware for each image
-            cri_simulations.FPGA_Execution.fpga_controller.clear(
+            hs_bridge.FPGA_Execution.fpga_controller.clear(
                 len(self.mul_neuron1), False, 0
             )  ##Num_neurons, simDump, coreOverride
             
@@ -921,7 +681,7 @@ class CRI_Converter():
                 offset = self.embed_dim * self.embed_dim
                 currInput[1][i] = 'a' + str(int(currInput[1][i][1:])-offset)
             
-            cri_simulations.FPGA_Execution.fpga_controller.clear(
+            hs_bridge.FPGA_Execution.fpga_controller.clear(
                 len(self.mul_neuron1), False, 0
             )  ##Num_neurons, simDump, coreOverride
             
@@ -940,7 +700,7 @@ class CRI_Converter():
     
     #Function used for SSA testing only 
     #Only process a batch of input for a single time step 
-    def run_CRI_sw_ssa_testing(self,inputList,softwareNetwork):
+    def _run_CRI_sw_ssa_testing(self,inputList,softwareNetwork):
         # each image
         output = []
         for currInput in tqdm(inputList):
@@ -990,7 +750,7 @@ class CRI_Converter():
     
     #Function used for maxpooling testing only 
     #Only process a batch of input for a single time step 
-    def run_CRI_sw_testing(self,inputList,softwareNetwork):
+    def _run_CRI_sw_testing(self,inputList,softwareNetwork):
         # each image
         output = []
         for currInput in tqdm(inputList):
@@ -1010,7 +770,7 @@ class CRI_Converter():
             
         return output 
     
-    def run_CRI_hw_testing(self,inputList,softwareNetwork):
+    def _run_CRI_hw_testing(self,inputList,hardwareNetwork):
         # each image
         output = []
         for currInput in tqdm(inputList):

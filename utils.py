@@ -11,6 +11,8 @@ import datetime
 # import hs_bridge
 from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 from spikingjelly.activation_based.neuron import IFNode, LIFNode
+from torch.utils.tensorboard import SummaryWriter
+import hs_bridge 
 
 def isSNNLayer(layer):
     # Test = isinstance(layer, MultiStepLIFNode) or isinstance(layer, LIFNode) or isinstance(layer, IFNode)
@@ -233,13 +235,13 @@ def validate(args, net, test_loader, device):
     print(f'test speed ={test_speed: .4f} images/s')
 
     
-def run_CRI_hw(inputList,hardwareNetwork,cri_convert):
+def run_CRI_hw(inputList, hardwareNetwork,cri_convert):
     predictions = []
     #each image
     total_time_cri = 0
     for currInput in inputList:
         #initiate the hardware for each image
-        cri_simulations.FPGA_Execution.fpga_controller.clear(len(cri_convert.neuron_dict), False, 0)  ##Num_neurons, simDump, coreOverride
+        hs_bridge.FPGA_Execution.fpga_controller.clear(len(cri_convert.neuron_dict), False, 0)  ##Num_neurons, simDump, coreOverride
         spikeRate = [0]*10
         #each time step
         for slice in currInput:
@@ -251,7 +253,7 @@ def run_CRI_hw(inputList,hardwareNetwork,cri_convert):
             print(hwSpike)
             for spike in hwSpike:
                 print(int(spike))
-                spikeIdx = int(spike) - self.bias_start_idx 
+                spikeIdx = int(spike) - cri_convert.bias_start_idx 
                 if spikeIdx >= 0: 
                     spikeRate[spikeIdx] += 1 
         predictions.append(spikeRate.index(max(spikeRate))) 

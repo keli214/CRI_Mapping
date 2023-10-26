@@ -1,26 +1,21 @@
-# imports
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.cuda import amp
 from torchvision import datasets, transforms
-from spikingjelly.activation_based import neuron, functional, surrogate, layer, encoding
-from torch.utils.tensorboard import SummaryWriter
+from spikingjelly.activation_based import functional, encoding
 from torch.utils.data import DataLoader
-import os
 import time
 import argparse
 from spikingjelly import visualizing
-from cri_converter import CRI_Converter, Quantize_Network
+from cri_converter import CRI_Converter
+from quantization import Quantizer
 from bn_folder import BN_Folder
-from torchsummary import summary
 from hs_api.api import CRI_network
-import hs_bridge
-from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 from utils import train, validate
-from transformer.cri_model import Spikformer, SSA
 from tqdm import tqdm
 import numpy as np
+from spikformer import Spikformer, SSA
 
 
 parser = argparse.ArgumentParser()
@@ -29,10 +24,8 @@ parser.add_argument('--load_path', default='', type=str, help='checkpoint loadin
 parser.add_argument('--load_ssa_path', default='', type=str, help='ssa checkpoint loading path')
 parser.add_argument('--train', action='store_true', default=False, help='Train the network from stratch')
 parser.add_argument('-b','--batch_size', default=32, type=int)
-
 parser.add_argument('--data_path', default='/Volumes/export/isn/keli/code/data', type=str, help='path to dataset')
 parser.add_argument('--out_dir', default='/Volumes/export/isn/keli/code/HS/CRI_Mapping/runs/ssa', type=str, help='dir path that stores the trained model checkpoint')
-
 parser.add_argument('--epochs', default=10, type=int)
 parser.add_argument('--lr', default=1e-1, type=float)
 parser.add_argument('-m','--momentum', default=0.9, type=float)
@@ -128,7 +121,7 @@ def main():
     # validate(args, net_bn, test_loader, device)
     
     # weight_quantization
-    quan_fun = Quantize_Network(w_alpha = 3,dynamic_alpha = False) 
+    quan_fun = Quantizer(w_alpha = 3,dynamic_alpha = False) 
     ssa_quan = quan_fun.quantize(ssa_bn)
     # validate(args, net_bn, test_loader, device)
     print(ssa_quan)
@@ -202,9 +195,9 @@ def main():
             
             
             if args.hardware:
-                first_out, cri_output = cri_convert.run_CRI_hw_ssa_testing(cri_input,hardwareNetwork)
+                first_out, cri_output = _cri_convert.run_CRI_hw_ssa_testing(cri_input,hardwareNetwork)
             else:
-                first_out, cri_output = cri_convert.run_CRI_sw_ssa_testing(cri_input,softwareNetwork)
+                first_out, cri_output = _cri_convert.run_CRI_sw_ssa_testing(cri_input,softwareNetwork)
             
             
             #reconstruct the output matrix from spike idices

@@ -11,26 +11,6 @@ __all__ = ['spikformer']
 from torch.utils.tensorboard import SummaryWriter
 from quant import act_quantization
     
-def activation_visual(x, layer):
-    writer = SummaryWriter('runs/transformer/activations')
-    img_batch = np.array(x.flatten(0, 1).cpu())
-    img_batch = np.expand_dims(img_batch, axis=1)
-    weight_shape = img_batch.shape
-    num_kernels = weight_shape[0]
-    for k in range(num_kernels):
-        # print(img_batch.shape, weight_shape)
-        writer.add_image(f'activation_{layer} kernel_{k}', img_batch[k], 0, dataformats='CHW')
-    writer.close()
-
-def activation_histogram(x):
-    writer = SummaryWriter('runs/transformer/activations')
-    flattened_weights = x.flatten().cpu()
-    # weight_range = abs(max(flattened_weights) - min(flattened_weights))
-    tag = f"Range_{x.shape}"
-    writer.add_histogram(tag, flattened_weights, global_step=0, bins='tensorflow')
-    writer.close()
-
-    
 class MLP(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, drop=0.):
         super().__init__()

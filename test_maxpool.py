@@ -5,21 +5,17 @@ import torch.nn.functional as F
 from torch.cuda import amp
 from torchvision import datasets, transforms
 from spikingjelly.activation_based import neuron, functional, surrogate, layer, encoding
-from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
-import os
 import time
 import argparse
 from spikingjelly import visualizing
-from quant_network import Quantize_Network
+from quantization import Quantizer
 from cri_converter import CRI_Converter
 from bn_folder import BN_Folder
-from torchsummary import summary
 from hs_api.api import CRI_network
-import hs_bridge
 from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 from utils import train, validate, run_CRI_hw
-from models import FashionMnist, Mnist, CNN, CNN_1, CNN_MaxPool
+from models import CNN_MaxPool
 from tqdm import tqdm
 import numpy as np
 
@@ -88,7 +84,7 @@ def main():
     net_bn = bn.fold(net.eval())
     # validate(args, net_bn, test_loader, device)
     
-    quan_fun = Quantize_Network(w_alpha = 3,dynamic_alpha = False) # weight_quantization
+    quan_fun = Quantizer(w_alpha = 3,dynamic_alpha = False) # weight_quantization
     net_quan = quan_fun.quantize(net_bn)
     # validate(args, net_bn, test_loader, device)
     # print(net_quan.attn.attn_lif.v_threshold)
@@ -149,9 +145,9 @@ def main():
             cri_input = cri_convert.intput_converter_maxPool(conv_img)
             
             if args.hardware:
-                cri_output = cri_convert.run_CRI_hw_testing(cri_input,softwareNetwork)
+                cri_output = cri_convert._run_CRI_hw_testing(cri_input,softwareNetwork)
             else:
-                cri_output = cri_convert.run_CRI_sw_testing(cri_input,softwareNetwork)
+                cri_output = cri_convert._run_CRI_sw_testing(cri_input,softwareNetwork)
             
             spiking_maxPool = net_maxPool.forward_maxPool(encoded_img)
             # breakpoint()

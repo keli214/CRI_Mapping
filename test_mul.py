@@ -4,19 +4,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.cuda import amp
 from torchvision import datasets, transforms
-from spikingjelly.activation_based import neuron, functional, surrogate, layer, encoding
-from torch.utils.tensorboard import SummaryWriter
+from spikingjelly.activation_based import functional, encoding
 from torch.utils.data import DataLoader
-import os
 import time
 import argparse
-from spikingjelly import visualizing
-from cri_converter import CRI_Converter, Quantize_Network
+from cri_converter import CRI_Converter
+from quantization import Quantizer
 from bn_folder import BN_Folder
-from torchsummary import summary
 from hs_api.api import CRI_network
-import hs_bridge
-from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 from utils import train, validate
 from models import SSA
 from tqdm import tqdm
@@ -28,10 +23,6 @@ parser.add_argument('--resume_path', default='', type=str, help='checkpoint file
 parser.add_argument('--load_path', default='', type=str, help='checkpoint loading path')
 parser.add_argument('--train', action='store_true', default=False, help='Train the network from stratch')
 parser.add_argument('-b','--batch_size', default=32, type=int)
-
-# parser.add_argument('--data_path', default='C:\\Users\\KeliWang\\CRI_Mapping\\data', type=str, help='path to dataset')
-# parser.add_argument('--out_dir', default='C:\\Users\\KeliWang\\CRI_Mapping\\runs\\ssa', type=str, help='dir path that stores the trained model checkpoint')
-
 parser.add_argument('--data_path', default='/Volumes/export/isn/keli/code/data', type=str, help='path to dataset')
 parser.add_argument('--out_dir', default='/Volumes/export/isn/keli/code/HS/CRI_Mapping/runs/ssa', type=str, help='dir path that stores the trained model checkpoint')
 
@@ -101,7 +92,7 @@ def main():
     net_bn = bn.fold(net.eval())
     # validate(args, net_bn, test_loader, device)
     
-    quan_fun = Quantize_Network(w_alpha = 3,dynamic_alpha = False) # weight_quantization
+    quan_fun = Quantizer(w_alpha = 3,dynamic_alpha = False) # weight_quantization
     net_quan = quan_fun.quantize(net_bn)
     # validate(args, net_bn, test_loader, device)
     # print(net_quan.attn.attn_lif.v_threshold)
@@ -131,9 +122,10 @@ def main():
     
     hardwareNetwork, softwareNetwork = None, None
     if args.hardware:
-        hardwareNetwork = CRI_network(dict(cri_convert.mul_axon),
-                                      connections=dict(cri_convert.mul_neuron),
-                                      config=config,target='CRI', 
+        hardwareNetwork = CRI_network(dict(cri_convert.mul_axon1),
+                                      connections=dict(cri_convert.mul_neuron1),
+                                      config=config,
+                                      target='CRI', 
                                       outputs =cri_convert.mul_output1,
                                       coreID=1, 
                                       perturbMag=8,#Zero randomness  
@@ -142,19 +134,12 @@ def main():
         # breakpoint()
         softwareNetwork = CRI_network(dict(cri_convert.mul_axon1),
                                       connections=dict(cri_convert.mul_neuron1),
-                                      config=config,target='simpleSim', 
+                                      config=config,
+                                      target='simpleSim', 
                                       outputs = cri_convert.mul_output1,
                                       coreID=1, 
                                       perturbMag=8, #Zero randomness  
                                       leak=2**6)#IF
-        
-        # softwareNetwork2 = CRI_network(dict(cri_convert.mul_axon2),
-        #                               connections=dict(cri_convert.mul_neuron2),
-        #                               config=config,target='simpleSim', 
-        #                               outputs = cri_convert.mul_output2,
-        #                               coreID=1, 
-        #                               perturbMag=8, #Zero randomness  
-        #                               leak=2**6)#IF
 
     cri_convert.bias_start_idx = 0 #add this to the end of conversion
     loss_fun = nn.MSELoss()
@@ -182,10 +167,6 @@ def main():
             
             cri_input = cri_convert.input_converter_mul(q,k,v)
             
-            # if((q@k.transpose(-2,-1)).sum() > 0):
-            #     breakpoint()
-            
-            
             spiking_mul = net_mul.forward_mul(encoded_img)
             
             # if(spiking_mul.sum() > 0):
@@ -193,9 +174,9 @@ def main():
             
             
             if args.hardware:
-                cri_output = cri_convert.run_CRI_hw_testing(cri_input,hardwareNetwork)
+                first_out, cri_output = cri_convert._run_CRI_hw_ssa_testing(cri_input,hardwareNetwork)
             else:
-                first_out, cri_output = cri_convert.run_CRI_sw_ssa_testing(cri_input,softwareNetwork)
+                first_out, cri_output = cri_convert._run_CRI_sw_ssa_testing(cri_input,softwareNetwork)
             
             
             #reconstruct the output matrix from spike idices
@@ -220,7 +201,6 @@ def main():
                     breakpoint()
             
             #feed the mul output from cri into the net
-            # breakpoint()
             out_cri += net_mul.forward_output(outputs.float().to(device))
             
         functional.reset_net(net)
