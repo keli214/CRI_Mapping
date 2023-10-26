@@ -12,7 +12,6 @@ import datetime
 from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 from spikingjelly.activation_based.neuron import IFNode, LIFNode
 from torch.utils.tensorboard import SummaryWriter
-import hs_bridge 
 
 def isSNNLayer(layer):
     # Test = isinstance(layer, MultiStepLIFNode) or isinstance(layer, LIFNode) or isinstance(layer, IFNode)
@@ -233,93 +232,3 @@ def validate(args, net, test_loader, device):
     
     print(f'test_loss ={test_loss: .4f}, test_acc ={test_acc: .4f}')
     print(f'test speed ={test_speed: .4f} images/s')
-
-    
-def run_CRI_hw(inputList, hardwareNetwork,cri_convert):
-    predictions = []
-    #each image
-    total_time_cri = 0
-    for currInput in inputList:
-        #initiate the hardware for each image
-        hs_bridge.FPGA_Execution.fpga_controller.clear(len(cri_convert.neuron_dict), False, 0)  ##Num_neurons, simDump, coreOverride
-        spikeRate = [0]*10
-        #each time step
-        for slice in currInput:
-            start_time = time.time()
-            hwSpike = hardwareNetwork.step(slice, membranePotential=False)
-            # print("Mem:",mem)
-            end_time = time.time()
-            total_time_cri = total_time_cri + end_time-start_time
-            print(hwSpike)
-            for spike in hwSpike:
-                print(int(spike))
-                spikeIdx = int(spike) - cri_convert.bias_start_idx 
-                if spikeIdx >= 0: 
-                    spikeRate[spikeIdx] += 1 
-        predictions.append(spikeRate.index(max(spikeRate))) 
-    print(f"Total execution time CRIFPGA: {total_time_cri:.5f} s")
-    return(predictions)
-    
-# def run_CRI_sw(inputList,softwareNetwork):
-#     predictions = []
-#     total_time_cri = 0
-#     #each image
-#     for currInput in inputList:
-#         #reset the membrane potential to zero
-#         softwareNetwork.simpleSim.initialize_sim_vars(len(neuronsDict))
-#         spikeRate = [0]*10
-#         #each time step
-#         for slice in currInput:
-#             start_time = time.time()
-#             swSpike = softwareNetwork.step(slice, membranePotential=False)
-#             end_time = time.time()
-#             total_time_cri = total_time_cri + end_time-start_time
-#             for spike in swSpike:
-#                 spikeIdx = int(spike) - self.bias_start_idx 
-#                 try: 
-#                     if spikeIdx >= 0: 
-#                         spikeRate[spikeIdx] += 1 
-#                 except:
-#                     print("SpikeIdx: ", spikeIdx,"\n SpikeRate:",spikeRate )
-#         predictions.append(spikeRate.index(max(spikeRate)))
-#     print(f"Total simulation execution time: {total_time_cri:.5f} s")
-#     return(predictions)
-        
-# def run(self, network, test_loader, loss_fun, backend='hardware'):
-#     self.bias_start_idx = int(self.output_neurons[0])#add this to the end of conversion
-#     start_time = time.time()
-#     test_loss = 0
-#     test_acc = 0
-#     test_samples = 0
-#     for img, label in test_loader:
-#         cri_input = self.input_converter(img)
-#         # print(f'cri_input: {cri_input}')
-#         # img = img.to(device)
-#         # label = label.to(device)
-
-#         label_onehot = F.one_hot(label, 10).float()
-#         # out_fr = net(img)
-
-#         if backend == 'hardware':
-#             output = torch.tensor(self.run_CRI_hw(cri_input,network))
-
-#         elif backend == 'software':
-#             output = torch.tensor(self.run_CRI_sw(cri_input,network))
-
-#         else:
-#             print(f'Not supported {backend}')
-#             return 
-
-#         loss = loss_fun(output, label_onehot)
-
-#         test_samples += label.numel()
-#         test_loss += loss.item() * label.numel()
-#         test_acc += (output.argmax(1) == label).float().sum().item()
-
-#     test_time = time.time()
-#     test_speed = test_samples / (test_time - start_time)
-#     test_loss /= test_samples
-#     test_acc /= test_samples
-
-#     print(f'test_loss ={test_loss: .4f}, test_acc ={test_acc: .4f}')
-#     print(f'test speed ={test_speed: .4f} images/s')
