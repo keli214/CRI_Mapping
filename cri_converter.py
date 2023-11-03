@@ -66,6 +66,12 @@ class CRI_Converter():
         self.mul_axon2 = defaultdict(list)
         self.mul_neuron2 = defaultdict(list)
         self.mul_output2 = []
+        
+        self.mul_axon = defaultdict(list)
+        self.mul_neuron = defaultdict(list)
+        self.mul_output = []
+        
+        
     
     '''Given an img, encode it into spikes and then convert it to axons lists
     '''
@@ -98,7 +104,7 @@ class CRI_Converter():
     '''Input converter for maxpool testing only
         Given an converted img ouput, return a list of input axons ignore 
     '''
-    def intput_converter_maxPool(self, input_data):
+    def _intput_converter_maxPool(self, input_data):
         current_input = input_data.view(input_data.size(0), -1)
         batch = []
         for img in current_input:
@@ -108,7 +114,7 @@ class CRI_Converter():
     
     '''Convert the q,k,v output from spikingjelly network 
     into spikes input for multiplication testing'''
-    def input_converter_mul(self, q, k, v):
+    def _input_converter_mul(self, q, k, v):
         inputs = [q[0], k[0], v[0].transpose(-1,-2)]
         batch = []
         
@@ -232,7 +238,6 @@ class CRI_Converter():
         # For SSA testing only
         for neuron in self.curr_input.flatten():       
             self.axon_dict[neuron].append([(output[idx], weight) for idx, weight in enumerate(weights)])
-
         
         # self.neuron_offset += np.prod(output_shape)
         # print(f'curr_neuron_offset: {self.neuron_offset}')
@@ -286,10 +291,10 @@ class CRI_Converter():
                         self.neuron_dict[neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
                                                         self.v_threshold/2))
                         if test == 1:
-                            self.mul_axon1['a'+neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
+                            self.mul_axon['a'+neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
                                                         self.v_threshold/2))
                         if test == 2:
-                            self.mul_axon2['a'+neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
+                            self.mul_neuron[neuron].append((first_layer[chanIdx, rowIdx, idx, i], \
                                                         self.v_threshold/2))
 
         #Generates the synapses between input y and the first layer of dummy neurons
@@ -300,10 +305,10 @@ class CRI_Converter():
                         self.neuron_dict[neuron].append((first_layer[chanIdx, i, rowIdx, idx], \
                                                         self.v_threshold/2))
                         if test == 1:
-                            self.mul_axon1['a'+neuron].append((first_layer[chanIdx, i, rowIdx, idx], \
+                            self.mul_axon['a'+neuron].append((first_layer[chanIdx, i, rowIdx, idx], \
                                                         self.v_threshold/2))
                         if test == 2:
-                            self.mul_axon2['a'+neuron].append((first_layer[chanIdx, i, rowIdx, idx], \
+                            self.mul_axon['a'+neuron].append((first_layer[chanIdx, i, rowIdx, idx], \
                                                         self.v_threshold/2))
         
         
@@ -316,25 +321,25 @@ class CRI_Converter():
                         self.neuron_dict[neuron].append((second_layer[chanIdx, mIdx, colIdx], \
                                                     self.v_threshold))
                         if test == 1:
-                            self.mul_neuron1[neuron].append((second_layer[chanIdx, mIdx, colIdx], \
+                            self.mul_neuron[neuron].append((second_layer[chanIdx, mIdx, colIdx], \
                                                         self.v_threshold))
                         if test == 2:
-                            self.mul_neuron2[neuron].append((second_layer[chanIdx, mIdx, colIdx], \
+                            self.mul_neuron[neuron].append((second_layer[chanIdx, mIdx, colIdx], \
                                                         self.v_threshold))
         
         # breakpoint()
         # print(f'outputshape: {self.curr_input.shape}')
         self.curr_input = second_layer
-        if test == 1:
+        # if test == 1:
+        #     self.output_start_idx = int(second_layer.flatten()[0])
+        #     for output_neuron in second_layer.flatten():
+        #         self.mul_neuron1[output_neuron] = []
+        #     self.mul_output1 = second_layer.flatten().tolist()
+        if test == 2:
             self.output_start_idx = int(second_layer.flatten()[0])
             for output_neuron in second_layer.flatten():
-                self.mul_neuron1[output_neuron] = []
-            self.mul_output1 = second_layer.flatten().tolist()
-        if test == 2:
-            # self.output_start_idx = int(second_layer.flatten()[0])
-            for output_neuron in second_layer.flatten():
-                self.mul_neuron2[output_neuron] = []
-            self.mul_output2 = second_layer.flatten().tolist()
+                self.mul_neuron[output_neuron] = []
+            self.mul_output = second_layer.flatten().tolist()
 
 
     def _sparse_converter(self, layer):
@@ -659,7 +664,7 @@ class CRI_Converter():
         for currInput in tqdm(inputList):
             # initiate the hardware for each image
             hs_bridge.FPGA_Execution.fpga_controller.clear(
-                len(self.mul_neuron1), False, 0
+                len(self.mul_neuron), False, 0
             )  ##Num_neurons, simDump, coreOverride
             
             # Given the network is 5 layers, feed in the two inputs at different time steps          
@@ -682,7 +687,7 @@ class CRI_Converter():
                 currInput[1][i] = 'a' + str(int(currInput[1][i][1:])-offset)
             
             hs_bridge.FPGA_Execution.fpga_controller.clear(
-                len(self.mul_neuron1), False, 0
+                len(self.mul_neuron), False, 0
             )  ##Num_neurons, simDump, coreOverride
             
             hwSpike1, _, _ = hardwareNetwork.step(currInput[1]+spikeIn, membranePotential=False)
@@ -704,44 +709,48 @@ class CRI_Converter():
         # each image
         output = []
         for currInput in tqdm(inputList):
-            softwareNetwork.simpleSim.initialize_sim_vars(len(self.mul_neuron1))
+            softwareNetwork.simpleSim.initialize_sim_vars(len(self.mul_neuron))
             
             # Given the network is 5 layers, feed in the two inputs at different time steps
-            spikeOut1 = softwareNetwork.step(currInput[0], membranePotential=False)
+            swSpike0 = softwareNetwork.step(currInput[0], membranePotential=False)
+            spikeIdx0 = [int(spike) - self.output_start_idx for spike in swSpike0] 
             
-            spikeOut2 = softwareNetwork.step([], membranePotential=False)
-            
-            spikeOut3 = softwareNetwork.step([], membranePotential=False)
-            
-            spikeOut = spikeOut1 + spikeOut2 + spikeOut3
-            spikeIn = []
-            for i in range(len(spikeOut)):
-                #Offset = Total # of neurons and axon in the first model
-                offset = self.embed_dim * self.embed_dim * 3 + self.embed_dim * self.embed_dim * self.embed_dim 
-                spikeIn.append('a'+str(int(spikeOut[i])-offset))
-                # breakpoint()
-                
-            # if len(currInput[1]) > 0:
-            #     breakpoint()
-                   
-            for i in range(len(currInput[1])):
-                #Offset = N * N (starts from the second input)
-                offset = self.embed_dim * self.embed_dim
-                currInput[1][i] = 'a' + str(int(currInput[1][i][1:])-offset)
-            
-                
-            softwareNetwork.simpleSim.initialize_sim_vars(len(self.mul_neuron1))
-
-            swSpike1 = softwareNetwork.step(currInput[1]+spikeIn, membranePotential=False)
+            swSpike1 = softwareNetwork.step([], membranePotential=False)
             spikeIdx1 = [int(spike) - self.output_start_idx for spike in swSpike1] 
             
             swSpike2 = softwareNetwork.step([], membranePotential=False)
             spikeIdx2 = [int(spike) - self.output_start_idx for spike in swSpike2] 
             
-            swSpike3 = softwareNetwork.step([], membranePotential=False)
+            spikeOut = spikeIdx0 + spikeIdx1 + spikeIdx2
+        
+            # spikeIn = []
+            # for i in range(len(spikeOut)):
+            #     #Offset = Total # of neurons and axon in the first model
+            #     offset = self.embed_dim * self.embed_dim * 3 + self.embed_dim * self.embed_dim * self.embed_dim 
+            #     spikeIn.append('a'+str(int(spikeOut[i])-offset))
+                # breakpoint()
+                
+            # if len(currInput[1]) > 0:
+            #     breakpoint()
+                   
+            # for i in range(len(currInput[1])):
+            #     #Offset = N * N (starts from the second input)
+            #     offset = self.embed_dim * self.embed_dim
+            #     currInput[1][i] = 'a' + str(int(currInput[1][i][1:])-offset)
+            
+                
+            # softwareNetwork.simpleSim.initialize_sim_vars(len(self.mul_neuron1))
+
+            swSpike3 = softwareNetwork.step(currInput[1], membranePotential=False)
             spikeIdx3 = [int(spike) - self.output_start_idx for spike in swSpike3] 
             
-            output.append(spikeIdx1+ spikeIdx2 + spikeIdx3)    
+            swSpike4 = softwareNetwork.step([], membranePotential=False)
+            spikeIdx4 = [int(spike) - self.output_start_idx for spike in swSpike4] 
+            
+            swSpike5 = softwareNetwork.step([], membranePotential=False)
+            spikeIdx5 = [int(spike) - self.output_start_idx for spike in swSpike5] 
+            
+            output.append(spikeIdx3+ spikeIdx4 + spikeIdx5)    
             
 #             if len(spikeIdx1) > 0 or len(spikeIdx2) > 0 or len(spikeIdx3) > 0:
 #                 breakpoint()

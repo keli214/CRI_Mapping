@@ -90,7 +90,7 @@ class Quantizer():
         self.v_threshold = None
         self.w_bits = 16
         self.w_delta = self.w_alpha/(2**(self.w_bits-1)-1)
-        self.weight_quant = weight_quantize_fn(self.w_bits)
+        self.weight_quant = weight_quantize_fn(self.w_bits, self.w_alpha)
         self.weight_quant.wgt_alpha = self.w_alpha
     
     def quantize(self, model):

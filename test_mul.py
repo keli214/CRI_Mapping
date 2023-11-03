@@ -18,6 +18,7 @@ from tqdm import tqdm
 import numpy as np
 
 
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--resume_path', default='', type=str, help='checkpoint file')
 parser.add_argument('--load_path', default='', type=str, help='checkpoint loading path')
@@ -122,8 +123,8 @@ def main():
     
     hardwareNetwork, softwareNetwork = None, None
     if args.hardware:
-        hardwareNetwork = CRI_network(dict(cri_convert.mul_axon1),
-                                      connections=dict(cri_convert.mul_neuron1),
+        hardwareNetwork = CRI_network(dict(cri_convert.mul_axon),
+                                      connections=dict(cri_convert.mul_neuron),
                                       config=config,
                                       target='CRI', 
                                       outputs =cri_convert.mul_output1,
@@ -132,11 +133,11 @@ def main():
                                       leak=2**6)#IF
     else:
         # breakpoint()
-        softwareNetwork = CRI_network(dict(cri_convert.mul_axon1),
-                                      connections=dict(cri_convert.mul_neuron1),
+        softwareNetwork = CRI_network(dict(cri_convert.mul_axon),
+                                      connections=dict(cri_convert.mul_neuron),
                                       config=config,
                                       target='simpleSim', 
-                                      outputs = cri_convert.mul_output1,
+                                      outputs = cri_convert.mul_output,
                                       coreID=1, 
                                       perturbMag=8, #Zero randomness  
                                       leak=2**6)#IF
@@ -165,7 +166,7 @@ def main():
             
             q,k,v = net_test.forward_qkv(encoded_img)
             
-            cri_input = cri_convert.input_converter_mul(q,k,v)
+            cri_input = cri_convert._input_converter_mul(q,k,v)
             
             spiking_mul = net_mul.forward_mul(encoded_img)
             

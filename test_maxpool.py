@@ -142,7 +142,7 @@ def main():
             
             
             conv_img = net_test.forward_first(encoded_img)
-            cri_input = cri_convert.intput_converter_maxPool(conv_img)
+            cri_input = cri_convert._intput_converter_maxPool(conv_img)
             
             if args.hardware:
                 cri_output = cri_convert._run_CRI_hw_testing(cri_input,softwareNetwork)

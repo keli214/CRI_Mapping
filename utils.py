@@ -8,14 +8,11 @@ from spikingjelly.activation_based import encoding, functional
 import time
 import os
 import datetime
-# import hs_bridge
 from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 from spikingjelly.activation_based.neuron import IFNode, LIFNode
 from torch.utils.tensorboard import SummaryWriter
 
 def isSNNLayer(layer):
-    # Test = isinstance(layer, MultiStepLIFNode) or isinstance(layer, LIFNode) or isinstance(layer, IFNode)
-    # print(layer, Test)
     return isinstance(layer, MultiStepLIFNode) or isinstance(layer, LIFNode) or isinstance(layer, IFNode)
 
 

@@ -9,7 +9,7 @@ from functools import partial
 import numpy as np 
 __all__ = ['spikformer']
 from torch.utils.tensorboard import SummaryWriter
-from quant import act_quantization
+from quantization import act_quantization
 
 def activation_visual(x, layer):
     writer = SummaryWriter('runs/transformer/activations')

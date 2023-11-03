@@ -140,7 +140,7 @@ def main():
     
     cri_convert._attention_converter(ssa_quan)
     
-    # breakpoint()
+    breakpoint()
     
     config= {}
     config['neuron_type'] = "L&F" 
@@ -150,18 +150,18 @@ def main():
     
     hardwareNetwork, softwareNetwork = None, None
     if args.hardware:
-        hardwareNetwork = CRI_network(dict(cri_convert.mul_axon1),
-                                      connections=dict(cri_convert.mul_neuron1),
+        hardwareNetwork = CRI_network(dict(cri_convert.mul_axon),
+                                      connections=dict(cri_convert.mul_neuron),
                                       config=config,target='CRI', 
-                                      outputs =cri_convert.mul_output1,
+                                      outputs =cri_convert.mul_output,
                                       coreID=1, 
                                       perturbMag=8,#Zero randomness  
                                       leak=2**6)#IF
     else:
-        softwareNetwork = CRI_network(dict(cri_convert.mul_axon1),
-                                      connections=dict(cri_convert.mul_neuron1),
+        softwareNetwork = CRI_network(dict(cri_convert.mul_axon),
+                                      connections=dict(cri_convert.mul_neuron),
                                       config=config,target='simpleSim', 
-                                      outputs = cri_convert.mul_output1,
+                                      outputs = cri_convert.mul_output,
                                       coreID=1, 
                                       perturbMag=8, #Zero randomness  
                                       leak=2**6)#IF
@@ -191,13 +191,13 @@ def main():
             q,k,v = net_test.forward_qkv(img)
             embed = net_mul.forward_embed(img)
                 
-            cri_input = cri_convert.input_converter_mul(q,k,v)
+            cri_input = cri_convert._input_converter_mul(q,k,v)
             
             
             if args.hardware:
-                first_out, cri_output = _cri_convert.run_CRI_hw_ssa_testing(cri_input,hardwareNetwork)
+                first_out, cri_output = cri_convert._run_CRI_hw_ssa_testing(cri_input,hardwareNetwork)
             else:
-                first_out, cri_output = _cri_convert.run_CRI_sw_ssa_testing(cri_input,softwareNetwork)
+                first_out, cri_output = cri_convert._run_CRI_sw_ssa_testing(cri_input,softwareNetwork)
             
             
             #reconstruct the output matrix from spike idices
