@@ -7,9 +7,10 @@ from spikingjelly.activation_based import neuron
 import torch.nn.functional as F
 from functools import partial
 import numpy as np 
-__all__ = ['spikformer']
+__all__ = ['spikeformer']
 from torch.utils.tensorboard import SummaryWriter
 from quantization import act_quantization
+from local_attention.local_attention import LocalAttention
 
 def activation_visual(x, layer):
     writer = SummaryWriter('runs/transformer/activations')
@@ -108,21 +109,34 @@ class SSA(nn.Module):
         v_linear_out = self.v_lif(v_linear_out)
         v = v_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
         
-        attn = (q @ k.transpose(-2, -1)) 
+        # attn = (q @ k.transpose(-2, -1)) 
         
-        attn = self.act_alq(attn, self.act_alpha).clone().detach().requires_grad_(True)
+        # attn = self.act_alq(attn, self.act_alpha).clone().detach().requires_grad_(True)
         
-        x = attn @ v
+        # x = attn @ v
         
-        x = self.act_alq(x, self.act_alpha).clone().detach().requires_grad_(True)
+        # x = self.act_alq(x, self.act_alpha).clone().detach().requires_grad_(True)
         
+        attn = LocalAttention(
+          window_size = self.dim//8,       # window size. 512 is optimal, but 256 or 128 yields good enough results
+          look_backward = 1,       # each window looks at the window before
+          look_forward = 0,        # for non-auto-regressive case, will default to 1, so each window looks at the window before and after it
+          dropout = 0,           # post-attention dropout
+          exact_windowsize = False # if this is set to true, in the causal setting, each query will see at maximum the number of keys equal to the window size
+        )
         
+        x = attn(q,k,v)
+        
+        breakpoint()
         
         x = x.transpose(2, 3).reshape(T, B, N, C).contiguous()
+        
         x = self.attn_lif(x)
     
         x = x.flatten(0, 1)
+        
         x = self.proj_lif(self.proj_bn(self.proj_linear(x).transpose(-1, -2)).transpose(-1, -2).reshape(T, B, N, C))
+        
         return x
     
     def forward_qkv(self, x):
@@ -255,7 +269,7 @@ class SPS(nn.Module):
         return x
 
 
-class Spikformer(nn.Module):
+class Spikeformer(nn.Module):
     def __init__(self,
                  img_size_h=128, img_size_w=128, patch_size=7, in_channels=2, num_classes=11,
                  embed_dims=[64, 128, 256], num_heads=[1, 2, 4], mlp_ratios=[4, 4, 4], qkv_bias=False, qk_scale=None,
@@ -350,8 +364,8 @@ class Spikformer(nn.Module):
 
 
 # @register_model
-def spikformer(pretrained=False, **kwargs):
-    model = Spikformer(
+def spikeformer(pretrained=False, **kwargs):
+    model = Spikeformer(
         # img_size_h=224, img_size_h=224,
         # patch_size=16, embed_dims=768, num_heads=12, mlp_ratios=4,
         # in_channels=3, num_classes=1000, qkv_bias=False,

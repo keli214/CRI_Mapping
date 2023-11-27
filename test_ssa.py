@@ -7,7 +7,6 @@ from spikingjelly.activation_based import functional, encoding
 from torch.utils.data import DataLoader
 import time
 import argparse
-from spikingjelly import visualizing
 from cri_converter import CRI_Converter
 from quantization import Quantizer
 from bn_folder import BN_Folder
@@ -15,7 +14,7 @@ from hs_api.api import CRI_network
 from utils import train, validate
 from tqdm import tqdm
 import numpy as np
-from spikformer import Spikformer, SSA
+from spikeformer import Spikeformer, SSA
 
 
 parser = argparse.ArgumentParser()
@@ -61,7 +60,7 @@ def main():
     
     # Initialize SnnTorch/SpikingJelly model
     N = 16
-    net = Spikformer(
+    net = Spikeformer(
         img_size_h=16, img_size_w=16,
         patch_size=4, embed_dims=N, num_heads=1, mlp_ratios=4,
         in_channels=1, num_classes=10, qkv_bias=False,
@@ -69,7 +68,7 @@ def main():
         T=1
     )
     
-    net_test = Spikformer(
+    net_test = Spikeformer(
         img_size_h=16, img_size_w=16,
         patch_size=4, embed_dims=N, num_heads=1, mlp_ratios=4,
         in_channels=1, num_classes=10, qkv_bias=False,
@@ -77,7 +76,7 @@ def main():
         T=1
     )
     
-    net_mul = Spikformer(
+    net_mul = Spikeformer(
         img_size_h=16, img_size_w=16,
         patch_size=4, embed_dims=N, num_heads=1, mlp_ratios=4,
         in_channels=1, num_classes=10, qkv_bias=False,

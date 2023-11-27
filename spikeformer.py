@@ -1,14 +1,35 @@
 import torch
 import torch.nn as nn
-from spikingjelly.clock_driven.neuron import MultiStepLIFNode
-from timm.layers import to_2tuple, trunc_normal_, DropPath
-from timm.models.registry import register_model
-from timm.models.vision_transformer import _cfg
+from spikingjelly.activation_based import neuron
+# from timm.models.layers import to_2tuple, trunc_normal_
+# from timm.models.registry import register_model
+# from timm.models.vision_transformer import _cfg
 import torch.nn.functional as F
 from functools import partial
-__all__ = ['spikformer']
+import numpy as np 
+__all__ = ['spikeformer']
 from torch.utils.tensorboard import SummaryWriter
-from quant import act_quantization
+from quantization import act_quantization
+
+def activation_visual(x, layer):
+    writer = SummaryWriter('runs/transformer/activations')
+    img_batch = np.array(x.flatten(0, 1).cpu())
+    img_batch = np.expand_dims(img_batch, axis=1)
+    weight_shape = img_batch.shape
+    num_kernels = weight_shape[0]
+    for k in range(num_kernels):
+        # print(img_batch.shape, weight_shape)
+        writer.add_image(f'activation_{layer} kernel_{k}', img_batch[k], 0, dataformats='CHW')
+    writer.close()
+
+def activation_histogram(x):
+    writer = SummaryWriter('runs/transformer/activations')
+    flattened_weights = x.flatten().cpu()
+    # weight_range = abs(max(flattened_weights) - min(flattened_weights))
+    tag = f"Range_{x.shape}"
+    writer.add_histogram(tag, flattened_weights, global_step=0, bins='tensorflow')
+    writer.close()
+
     
 class MLP(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, drop=0.):
@@ -17,11 +38,11 @@ class MLP(nn.Module):
         hidden_features = hidden_features or in_features
         self.fc1_linear = nn.Linear(in_features, hidden_features)
         self.fc1_bn = nn.BatchNorm1d(hidden_features)
-        self.fc1_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.fc1_lif = neuron.LIFNode(tau=2.0)
 
         self.fc2_linear = nn.Linear(hidden_features, out_features)
         self.fc2_bn = nn.BatchNorm1d(out_features)
-        self.fc2_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.fc2_lif = neuron.LIFNode(tau=2.0)
 
         self.c_hidden = hidden_features
         self.c_output = out_features
@@ -48,22 +69,21 @@ class SSA(nn.Module):
         self.scale = 0.125
         self.q_linear = nn.Linear(dim, dim)
         self.q_bn = nn.BatchNorm1d(dim)
-        self.q_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.q_lif = neuron.LIFNode(tau=2.0)
 
         self.k_linear = nn.Linear(dim, dim)
         self.k_bn = nn.BatchNorm1d(dim)
-        self.k_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.k_lif = neuron.LIFNode(tau=2.0)
 
         self.v_linear = nn.Linear(dim, dim)
         self.v_bn = nn.BatchNorm1d(dim)
-        self.v_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.v_lif = neuron.LIFNode(tau=2.0)
         #NOTE: Threshld should not be quantized for attn_lif
-        self.attn_lif = MultiStepLIFNode(tau=2.0, v_threshold=0.5, detach_reset=True)
+        self.attn_lif = neuron.LIFNode(tau=2.0, v_threshold = 0.5)
 
         self.proj_linear = nn.Linear(dim, dim)
         self.proj_bn = nn.BatchNorm1d(dim)
-        self.proj_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
-        
+        self.proj_lif = neuron.LIFNode(tau=2.0)
         #NOTE: testing the accuracy w/ single bit quantization
         self.act_alq = act_quantization(1) #activation quantization 
         self.act_alpha = 8.0 #scaling factor
@@ -90,30 +110,61 @@ class SSA(nn.Module):
         
         attn = (q @ k.transpose(-2, -1)) 
         
-        breakpoint()
         attn = self.act_alq(attn, self.act_alpha).clone().detach().requires_grad_(True)
-        
         
         x = attn @ v
         
         x = self.act_alq(x, self.act_alpha).clone().detach().requires_grad_(True)
-        # breakpoint()
-        
         
         x = x.transpose(2, 3).reshape(T, B, N, C).contiguous()
+        
         x = self.attn_lif(x)
+    
+        x = x.flatten(0, 1)
+        
+        x = self.proj_lif(self.proj_bn(self.proj_linear(x).transpose(-1, -2)).transpose(-1, -2).reshape(T, B, N, C))
+        return x
+    
+    def forward_qkv(self, x):
+        T,B,N,C = x.shape # C: embed dim
+                        
+
+        x_for_qkv = x.flatten(0, 1)  # TB, N, C
+        q_linear_out = self.q_linear(x_for_qkv)  # [TB, N, C]
+        q_linear_out = self.q_bn(q_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T, B, N, C).contiguous()
+        q_linear_out = self.q_lif(q_linear_out)
+        q = q_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
+
+        k_linear_out = self.k_linear(x_for_qkv)
+        k_linear_out = self.k_bn(k_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T,B, N, C).contiguous()
+        k_linear_out = self.k_lif(k_linear_out)
+        k = k_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
+
+        v_linear_out = self.v_linear(x_for_qkv)
+        v_linear_out = self.v_bn(v_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T,B, N, C).contiguous()
+        v_linear_out = self.v_lif(v_linear_out)
+        v = v_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
+        
+        return q,k,v
+    
+    def forward_test(self, x):
+        T,B,N,C = x.shape
         x = x.flatten(0, 1)
         x = self.proj_lif(self.proj_bn(self.proj_linear(x).transpose(-1, -2)).transpose(-1, -2).reshape(T, B, N, C))
         return x
+        
 
 class Block(nn.Module):
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, sr_ratio=1):
         super().__init__()
-        self.norm1 = norm_layer(dim) #Note: layer norm wasn't used in the actual implementation
+        # Note: layer norm wasn't used in the actual implementation
+        # self.norm1 = norm_layer(dim) 
+        # self.norm2 = norm_layer(dim)
+        
         self.attn = SSA(dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale,
                               attn_drop=attn_drop, proj_drop=drop, sr_ratio=sr_ratio)
-        self.norm2 = norm_layer(dim)
+        
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = MLP(in_features=dim, hidden_features=mlp_hidden_dim, drop=drop)
 
@@ -124,51 +175,66 @@ class Block(nn.Module):
         x = x + self.mlp(x)
 
         return x
+    
+    def forward_test(self, x, x_attn):
+        x_attn = self.attn.forward_test(x_attn)
+        x = x + x_attn
+        x = x + self.mlp(x)
+
+        return x
+    
+    def forward_qkv(self, x):
+        q,k,v = self.attn.forward_qkv(x)
+        return q,k,v
 
 
 class SPS(nn.Module):
-    def __init__(self, img_size_h=32, img_size_w=32, patch_size=4, in_channels=3, embed_dims=256):
+    def __init__(self, img_size_h=28, img_size_w=28, patch_size=7, in_channels=1, embed_dims=16):
         super().__init__()
         self.image_size = [img_size_h, img_size_w] #32*32
-        patch_size = to_2tuple(patch_size)
-        self.patch_size = patch_size
+        # patch_size = []
+        self.patch_size = [patch_size, patch_size]
         self.C = in_channels #3
-        self.H, self.W = self.image_size[0] // patch_size[0], self.image_size[1] // patch_size[1]
+        
+        self.H, self.W = self.image_size[0] // self.patch_size[0], self.image_size[1] // self.patch_size[1]
         self.num_patches = self.H * self.W #1024
         self.proj_conv = nn.Conv2d(in_channels, embed_dims//8, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn = nn.BatchNorm2d(embed_dims//8)
-        self.proj_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.proj_lif = neuron.LIFNode(tau=2.0)
 
         self.proj_conv1 = nn.Conv2d(embed_dims//8, embed_dims//4, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn1 = nn.BatchNorm2d(embed_dims//4)
-        self.proj_lif1 = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.proj_lif1 = neuron.LIFNode(tau=2.0)
 
         self.proj_conv2 = nn.Conv2d(embed_dims//4, embed_dims//2, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn2 = nn.BatchNorm2d(embed_dims//2)
-        self.proj_lif2 = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.proj_lif2 = neuron.LIFNode(tau=2.0)
         self.maxpool2 = torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)
 
         self.proj_conv3 = nn.Conv2d(embed_dims//2, embed_dims, kernel_size=3, stride=1, padding=1, bias=False)
         self.proj_bn3 = nn.BatchNorm2d(embed_dims)
-        self.proj_lif3 = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.proj_lif3 = neuron.LIFNode(tau=2.0)
         self.maxpool3 = torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)
 
         self.rpe_conv = nn.Conv2d(embed_dims, embed_dims, kernel_size=3, stride=1, padding=1, bias=False)
         self.rpe_bn = nn.BatchNorm2d(embed_dims)
-        self.rpe_lif = MultiStepLIFNode(tau=2.0, detach_reset=True)
+        self.rpe_lif = neuron.LIFNode(tau=2.0)
 
     def forward(self, x):
+        
         T, B, C, H, W = x.shape #time_step, batch_num, color_channel, h, w
         x = self.proj_conv(x.flatten(0, 1)) # have some fire value
+        # breakpoint()
         x = self.proj_bn(x).reshape(T, B, -1, H, W).contiguous()
         x = self.proj_lif(x).flatten(0, 1).contiguous()
+        
         # print("T0:", x.reshape(T,B, -1, H, W)[0,0,:,0,0] )
-        # print("T1:", x.reshape(T,B, -1, H, W)[1,0,:,0,0] )
-
+        # print("T1:", x.reshape(T,B, -1, H, W)[1,0,:,0,0] 
+        
         x = self.proj_conv1(x)
         x = self.proj_bn1(x).reshape(T, B, -1, H, W).contiguous()
         x = self.proj_lif1(x).flatten(0, 1).contiguous()
-        
+
         x = self.proj_conv2(x)
         x = self.proj_bn2(x).reshape(T, B, -1, H, W).contiguous()
         x = self.proj_lif2(x).flatten(0, 1).contiguous()
@@ -185,13 +251,13 @@ class SPS(nn.Module):
         x = self.rpe_lif(x)
         x = x + x_feat
 
-        x = x.flatten(-2).transpose(-1, -2)  # T,B,N,C
+        x = x.flatten(-2).transpose(-1, -2)  # T,B,N,D
         return x
 
 
-class Spikformer(nn.Module):
+class Spikeformer(nn.Module):
     def __init__(self,
-                 img_size_h=28, img_size_w=28, patch_size=16, in_channels=1, num_classes=11,
+                 img_size_h=128, img_size_w=128, patch_size=7, in_channels=2, num_classes=11,
                  embed_dims=[64, 128, 256], num_heads=[1, 2, 4], mlp_ratios=[4, 4, 4], qkv_bias=False, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm,
                  depths=[6, 8, 6], sr_ratios=[8, 4, 2], T = 4
@@ -202,7 +268,7 @@ class Spikformer(nn.Module):
         self.depths = depths
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depths)]  # stochastic depth decay rule
-
+        
         patch_embed = SPS(img_size_h=img_size_h,
                                  img_size_w=img_size_w,
                                  patch_size=patch_size,
@@ -234,7 +300,7 @@ class Spikformer(nn.Module):
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
+            torch.nn.init.trunc_normal_(m.weight, std=.02)
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
@@ -250,7 +316,32 @@ class Spikformer(nn.Module):
         for blk in block:
             x = blk(x)
         return x.mean(2)
+    
+    def forward_qkv(self, x):
+        x = (x.unsqueeze(0)).repeat(self.T, 1, 1, 1, 1)
+        block = getattr(self, f"block")
+        patch_embed = getattr(self, f"patch_embed")
 
+        x = patch_embed(x)
+        
+        q, k, v = block[0].forward_qkv(x)
+        return q,k,v
+    
+    def forward_embed(self,x):
+        x = (x.unsqueeze(0)).repeat(self.T, 1, 1, 1, 1)
+        block = getattr(self, f"block")
+        patch_embed = getattr(self, f"patch_embed")
+
+        x = patch_embed(x)
+        return x
+    
+    def forward_test(self, x, x_attn):
+        block = getattr(self, f"block")
+        x = block[0].forward_test(x, x_attn)
+        x = x.mean(2)
+        x = self.head(x.mean(0)) 
+        return x    
+        
     def forward(self, x):
         x = (x.unsqueeze(0)).repeat(self.T, 1, 1, 1, 1)
         x = self.forward_features(x)
@@ -258,16 +349,14 @@ class Spikformer(nn.Module):
         return x
 
 
-@register_model
-def spikformer(pretrained=False, **kwargs):
-    model = Spikformer(
+# @register_model
+def spikeformer(pretrained=False, **kwargs):
+    model = Spikeformer(
         # img_size_h=224, img_size_h=224,
         # patch_size=16, embed_dims=768, num_heads=12, mlp_ratios=4,
         # in_channels=3, num_classes=1000, qkv_bias=False,
         # norm_layer=partial(nn.LayerNorm, eps=1e-6), depths=12, sr_ratios=1,
         **kwargs
     )
-    model.default_cfg = _cfg()
+    # model.default_cfg = _cfg()
     return model
-
-
