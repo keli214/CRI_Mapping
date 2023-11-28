@@ -49,23 +49,23 @@ def main():
         scaler = amp.GradScaler()
         
     #Prepare the dataset
-    mnist_train = datasets.MNIST(args.data_path, train=True, download=True, transform=transforms.Compose(
-        [transforms.Resize((16,16)),transforms.ToTensor()]))
-    mnist_test = datasets.MNIST(args.data_path, train=False, download=True, transform=transforms.Compose(
-        [transforms.Resize((16,16)),transforms.ToTensor()]))
+    mnist_train = datasets.CIFAR10(args.data_path, train=True, download=True, transform=transforms.Compose(
+        [transforms.ToTensor()]))
+    mnist_test = datasets.CIFAR10(args.data_path, train=False, download=True, transform=transforms.Compose(
+        [transforms.ToTensor()]))
      
     # Create DataLoaders
     train_loader = DataLoader(mnist_train, batch_size=args.batch_size, shuffle=True, drop_last=True)
     test_loader = DataLoader(mnist_test, batch_size=args.batch_size, shuffle=True, drop_last=True)
     
     # Initialize SnnTorch/SpikingJelly model
-    N = 16
+    N = 384
     net = Spikeformer(
-        img_size_h=16, img_size_w=16,
-        patch_size=4, embed_dims=N, num_heads=1, mlp_ratios=4,
-        in_channels=1, num_classes=10, qkv_bias=False,
-        depths=1, sr_ratios=1,
-        T=1
+        img_size_h=32, img_size_w=32,
+        patch_size=4, embed_dims=N, num_heads=4, mlp_ratios=4,
+        in_channels=3, num_classes=10, qkv_bias=False,
+        depths=4, sr_ratios=1,
+        T=4
     )
     
     net.to(device)
@@ -77,3 +77,6 @@ def main():
         print('Start Training')
         train(args, net, train_loader, test_loader, device, scaler)
         return
+    
+if __name__ == '__main__':
+    main()

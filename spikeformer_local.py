@@ -97,7 +97,7 @@ class SSA(nn.Module):
         q_linear_out = self.q_linear(x_for_qkv)  # [TB, N, C]
         q_linear_out = self.q_bn(q_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T, B, N, C).contiguous()
         q_linear_out = self.q_lif(q_linear_out)
-        q = q_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
+        q = q_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous() # T, B, num_heads, num_patches, patch_size
 
         k_linear_out = self.k_linear(x_for_qkv)
         k_linear_out = self.k_bn(k_linear_out. transpose(-1, -2)).transpose(-1, -2).reshape(T,B, N, C).contiguous()
@@ -116,9 +116,10 @@ class SSA(nn.Module):
         # x = attn @ v
         
         # x = self.act_alq(x, self.act_alpha).clone().detach().requires_grad_(True)
+        # breakpoint()
         
         attn = LocalAttention(
-          window_size = self.dim//8,       # window size. 512 is optimal, but 256 or 128 yields good enough results
+          window_size = C//self.num_heads//12,       # window size. 512 is optimal, but 256 or 128 yields good enough results
           look_backward = 1,       # each window looks at the window before
           look_forward = 0,        # for non-auto-regressive case, will default to 1, so each window looks at the window before and after it
           dropout = 0,           # post-attention dropout
@@ -127,7 +128,7 @@ class SSA(nn.Module):
         
         x = attn(q,k,v)
         
-        breakpoint()
+        # breakpoint()
         
         x = x.transpose(2, 3).reshape(T, B, N, C).contiguous()
         
