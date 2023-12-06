@@ -5,3 +5,5 @@ runs/
 fig/
 **/__pycache__/
 **/output/
+**/build
+**/**deb
