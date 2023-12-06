@@ -639,7 +639,6 @@ def main():
                 best_metric, best_epoch = saver.save_checkpoint(epoch, metric=save_metric)
                 
                 #TODO: Save the SSA model seperately
-                breakpoint()
                 _logger.info('*** Best metric: {0} (epoch {1})'.format(best_metric, best_epoch))
 
     except KeyboardInterrupt:

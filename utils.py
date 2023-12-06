@@ -11,6 +11,7 @@ import datetime
 from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 from spikingjelly.activation_based.neuron import IFNode, LIFNode
 from torch.utils.tensorboard import SummaryWriter
+from torch.autograd import profiler
 
 def isSNNLayer(layer):
     return isinstance(layer, MultiStepLIFNode) or isinstance(layer, LIFNode) or isinstance(layer, IFNode)
@@ -53,7 +54,7 @@ def train(args, net, train_loader, test_loader, device, scaler):
     
     if args.writer:
         writer = SummaryWriter(args.out_dir)
-    
+        
     for epoch in range(start_epoch, args.epochs):
         start_time = time.time()
         net.train()
@@ -69,27 +70,38 @@ def train(args, net, train_loader, test_loader, device, scaler):
             if args.encoder:
                 if args.amp:
                     with amp.autocast():
-                        for t in range(args.num_steps):
+                        if args.transformer:
                             encoded_img = encoder(img)
                             out_fr += net(encoded_img)
-                        out_fr = out_fr/args.num_steps   
+                        else:
+                            for t in range(args.num_steps):
+                                encoded_img = encoder(img)
+                                out_fr += net(encoded_img)
+                            out_fr = out_fr/args.num_steps   
                         loss = loss_fun(out_fr, label_onehot)
                         scaler.scale(loss).backward()
                         scaler.step(optimizer)
                         scaler.update()
                         
                 else:
-                    for t in range(args.num_steps):
+                    if args.transformer:
                         encoded_img = encoder(img)
                         out_fr += net(encoded_img)
-                    out_fr = out_fr/args.num_steps  
+                    else:
+                        for t in range(args.num_steps):
+                            encoded_img = encoder(img)
+                            out_fr += net(encoded_img)
+                        out_fr = out_fr/args.num_steps  
                     loss = loss_fun(out_fr, label_onehot)
                     loss.backward()
                     optimizer.step()
             else:
-                for t in range(args.num_steps):
+                if args.transformer:
                     out_fr += net(img)
-                out_fr = out_fr/args.num_steps   
+                else:
+                    for t in range(args.num_steps):
+                        out_fr += net(img)
+                    out_fr = out_fr/args.num_steps   
                 loss = loss_fun(out_fr, label_onehot)
                 if args.amp:
                     scaler.scale(loss).backward()
