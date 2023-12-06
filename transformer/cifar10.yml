@@ -5,9 +5,10 @@ dim: 384
 num_heads: 4
 patch_size: 4
 mlp_ratio: 4
-start_epoch: 15
+start_epoch: 33
 data_dir: /Volumes/export/isn/keli/code/data
 dataset: torch/cifar10
+resume: ./output/train/20231205-163600-spikformer-32/checkpoint-33.pth.tar
 num_classes: 10
 img_size: 32
 mean:
