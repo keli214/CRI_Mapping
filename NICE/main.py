@@ -11,10 +11,15 @@ import time
 import os
 import argparse
 import datetime
+from hs_api.converter import CRI_Converter, Quantize_Network
 
 def main():
-    # python main.py -T 16 -channels 12 -device cpu -b 16 -epochs 64 -data-dir /Users/keli/Desktop/CRI/data/NMNIST -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/NICE/output -opt adam -lr 0.001 -j 8
+    # Training 
+    # python main.py -T 16 -channels 128 -device cpu -b 16 -epochs 64 -data-dir /Users/keli/Desktop/CRI/data/NMNIST -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/NICE/output -opt adam -lr 0.001 -j 8
 
+    # Conversion
+    # python main.py -T 16 -channels 128 -device cpu -convert
+    
     parser = argparse.ArgumentParser(description='Classify NMNIST')
     parser.add_argument('-T', default=16, type=int, help='simulating time-steps')
     parser.add_argument('-device', default='cuda:0', help='device')
@@ -32,11 +37,12 @@ def main():
     parser.add_argument('-momentum', default=0.9, type=float, help='momentum for SGD')
     parser.add_argument('-lr', default=0.1, type=float, help='learning rate')
     parser.add_argument('-channels', default=128, type=int, help='channels of CSNN')
+    parser.add_argument('-convert', action='store_true', help='Convert the network for CRI')
 
     args = parser.parse_args()
     print(args)
 
-    net = parametric_lif_net.NMNISTNet(channels=args.channels, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
+    net = parametric_lif_net.DVSGestureNet(channels=args.channels, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
 
     functional.set_step_mode(net, 'm')
     if args.cupy:
@@ -44,8 +50,31 @@ def main():
 
     print(net)
 
-
     net.to(args.device)
+    
+    if args.convert:
+        #Weight, Bias Quantization 
+        qn = Quantize_Network(w_alpha=4) 
+        net_quan = qn.quantize(net)
+        
+        #Set the parameters for conversion
+        input_layer = 0 #first pytorch layer that acts as synapses, indexing begin at 0 
+        output_layer = 25 #last pytorch layer that acts as synapses
+        input_shape = (2, 128, 128)
+        backend = 'spikingjelly'
+        v_threshold = qn.v_threshold
+
+        cn = CRI_Converter(num_steps = args.T, 
+                        input_layer = input_layer, 
+                        output_layer = output_layer, 
+                        input_shape = input_shape,
+                        backend=backend,
+                        v_threshold = v_threshold,
+                        embed_dim=0)
+        cn.layer_converter(net_quan)
+        cn.save_model()
+        return 
+                
 
     train_set = NMNIST(root=args.data_dir, train=True, data_type='frame', frames_number=args.T, split_by='number')
     test_set = NMNIST(root=args.data_dir, train=False, data_type='frame', frames_number=args.T, split_by='number')
