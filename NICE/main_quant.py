@@ -13,37 +13,6 @@ import os
 import argparse
 import datetime
 from hs_api.converter import CRI_Converter, Quantize_Network
-from quant_layer import QuantConv2d, QuantLinear
-from copy import deepcopy
-
-class QuantNMNISTNet(nn.Module):
-    def __init__(self, channels=128, spiking_neuron: callable = None, **kwargs):
-        super().__init__()
-
-        self.conv_fc = nn.Sequential(
-            QuantConv2d(2, channels, kernel_size=3, padding=1, bias=False),
-            layer.BatchNorm2d(channels),
-            spiking_neuron(**deepcopy(kwargs)),
-            layer.MaxPool2d(2, 2),
-
-            QuantConv2d(channels, channels, kernel_size=3, padding=1, bias=False),
-            layer.BatchNorm2d(channels),
-            spiking_neuron(**deepcopy(kwargs)),
-            layer.MaxPool2d(2, 2),
-
-            layer.Flatten(),
-            layer.Dropout(0.5),
-            QuantLinear(channels * 8 * 8, 2048),
-            spiking_neuron(**deepcopy(kwargs)),
-            layer.Dropout(0.5),
-            QuantLinear(2048, 100),
-            spiking_neuron(**deepcopy(kwargs)),
-            layer.VotingLayer()
-        )
-
-
-    def forward(self, x: torch.Tensor):
-        return self.conv_fc(x)
 
 def main():
     # Training 
@@ -51,6 +20,9 @@ def main():
 
     # Conversion
     # python main_quant.py -T 16 -channels 102 -device cpu -convert
+    
+    # Test BN
+    # python main_quant.py -T 16 -channels 102 -device cpu -test -resume ./output/T16_b16_adam_lr0.001_c102/checkpoint_max.pth
     
     parser = argparse.ArgumentParser(description='Classify NMNIST')
     parser.add_argument('-T', default=16, type=int, help='simulating time-steps')
@@ -77,7 +49,7 @@ def main():
     args = parser.parse_args()
     print(args)
 
-    net = QuantNMNISTNet(channels=args.channels, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
+    net = parametric_lif_net.NMNISTNet(channels=args.channels, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
 
     functional.set_step_mode(net, 'm')
     if args.cupy:
