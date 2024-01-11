@@ -1,8 +1,9 @@
 import torch
+import torch.nn as nn
 import sys
 import torch.nn.functional as F
 from torch.cuda import amp
-from spikingjelly.activation_based import functional, surrogate, neuron
+from spikingjelly.activation_based import functional, surrogate, neuron, layer
 from spikingjelly.activation_based.model import parametric_lif_net
 from spikingjelly.datasets.n_mnist import NMNIST
 from torch.utils.data import DataLoader
@@ -12,7 +13,37 @@ import os
 import argparse
 import datetime
 from hs_api.converter import CRI_Converter, Quantize_Network
-# from test_converter import CRI_Converter
+from quant_layer import QuantConv2d, QuantLinear
+from copy import deepcopy
+
+class QuantNMNISTNet(nn.Module):
+    def __init__(self, channels=128, spiking_neuron: callable = None, **kwargs):
+        super().__init__()
+
+        self.conv_fc = nn.Sequential(
+            QuantConv2d(2, channels, kernel_size=3, padding=1, bias=False),
+            layer.BatchNorm2d(channels),
+            spiking_neuron(**deepcopy(kwargs)),
+            layer.MaxPool2d(2, 2),
+
+            QuantConv2d(channels, channels, kernel_size=3, padding=1, bias=False),
+            layer.BatchNorm2d(channels),
+            spiking_neuron(**deepcopy(kwargs)),
+            layer.MaxPool2d(2, 2),
+
+            layer.Flatten(),
+            layer.Dropout(0.5),
+            QuantLinear(channels * 8 * 8, 2048),
+            spiking_neuron(**deepcopy(kwargs)),
+            layer.Dropout(0.5),
+            QuantLinear(2048, 100),
+            spiking_neuron(**deepcopy(kwargs)),
+            layer.VotingLayer()
+        )
+
+
+    def forward(self, x: torch.Tensor):
+        return self.conv_fc(x)
 
 def main():
     # Training 
@@ -39,11 +70,14 @@ def main():
     parser.add_argument('-lr', default=0.1, type=float, help='learning rate')
     parser.add_argument('-channels', default=128, type=int, help='channels of CSNN')
     parser.add_argument('-convert', action='store_true', help='Convert the network for CRI')
+    parser.add_argument('-test', action='store_true', help='Test the quantized network for CRI')
+    parser.add_argument('-train', action='store_true', help='Run the training script')
+    parser.add_argument('-labels', default=10, type=int, help='The number of labels')
 
     args = parser.parse_args()
     print(args)
 
-    net = parametric_lif_net.NMNISTNet(channels=args.channels, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
+    net = QuantNMNISTNet(channels=args.channels, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
 
     functional.set_step_mode(net, 'm')
     if args.cupy:
@@ -51,34 +85,7 @@ def main():
 
     print(net)
     
-    state_dict = torch.load("./output/T16_b16_adam_lr0.001_c102/checkpoint_max.pth", map_location=torch.device(args.device))
-    net.load_state_dict(state_dict['net'])
-
     net.to(args.device)
-    
-    if args.convert:
-        #Weight, Bias Quantization 
-        qn = Quantize_Network(w_alpha=4) 
-        net_quan = qn.quantize(net)
-        
-        #Set the parameters for conversion
-        input_layer = 0 #first pytorch layer that acts as synapses, indexing begins at 0 
-        output_layer = 13 #last pytorch layer that acts as synapses
-        input_shape = (2, 28, 28)
-        backend = 'spikingjelly'
-        v_threshold = qn.v_threshold
-        print(f"Threshold {v_threshold}")
-
-        cn = CRI_Converter(num_steps = args.T, 
-                        input_layer = input_layer, 
-                        output_layer = output_layer, 
-                        input_shape = input_shape,
-                        backend=backend,
-                        v_threshold = v_threshold,
-                        embed_dim=0)
-        cn.layer_converter(net_quan)
-        cn.save_model()
-        return
 
     train_set = NMNIST(root=args.data_dir, train=True, data_type='frame', frames_number=args.T, split_by='number')
     test_set = NMNIST(root=args.data_dir, train=False, data_type='frame', frames_number=args.T, split_by='number')
@@ -157,7 +164,7 @@ def main():
                 frame = frame.to(args.device)
                 frame = frame.transpose(0, 1)  # [N, T, C, H, W] -> [T, N, C, H, W]
                 label = label.to(args.device)
-                label_onehot = F.one_hot(label, 10).float()
+                label_onehot = F.one_hot(label, args.labels).float()
 
                 if scaler is not None:
                     with amp.autocast():
@@ -196,7 +203,7 @@ def main():
                     frame = frame.to(args.device)
                     frame = frame.transpose(0, 1)  # [N, T, C, H, W] -> [T, N, C, H, W]
                     label = label.to(args.device)
-                    label_onehot = F.one_hot(label, 11).float()
+                    label_onehot = F.one_hot(label, args.labels).float()
                     out_fr = net(frame).mean(0)
                     loss = F.mse_loss(out_fr, label_onehot)
                     test_samples += label.numel()
@@ -255,6 +262,35 @@ def main():
                         embed_dim=0)
         cn.layer_converter(net_quan)
         cn.save_model()
+        
+        
+    if args.test:
+        #Weight, Bias Quantization 
+        qn = Quantize_Network(w_alpha=4) 
+        net_quan = qn.quantize(net)
+        net_quan.to(args.device)
+        
+        net_quan.eval()
+        test_loss = 0
+        test_acc = 0
+        test_samples = 0
+        with torch.no_grad():
+            for frame, label in test_data_loader:
+                frame = frame.to(args.device)
+                frame = frame.transpose(0, 1)  # [N, T, C, H, W] -> [T, N, C, H, W]
+                label = label.to(args.device)
+                label_onehot = F.one_hot(label, args.labels).float()
+                out_fr = net_quan(frame).mean(0)
+                loss = F.mse_loss(out_fr, label_onehot)
+                test_samples += label.numel()
+                test_loss += loss.item() * label.numel()
+                test_acc += (out_fr.argmax(1) == label).float().sum().item()
+                functional.reset_net(net_quan)
+        test_loss /= test_samples
+        test_acc /= test_samples
+        
+        print(f'test_loss ={test_loss: .4f}, test_acc ={test_acc: .4f}')
+        
     
 if __name__ == '__main__':
     main()
