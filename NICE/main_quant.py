@@ -47,10 +47,10 @@ class QuantNMNISTNet(nn.Module):
 
 def main():
     # Training 
-    # python main.py -T 16 -channels 102 -device cpu -b 16 -epochs 64 -data-dir /Users/keli/Desktop/CRI/data/NMNIST -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/NICE/output -opt adam -lr 0.001 -j 8
+    # python main_quant.py -T 16 -channels 102 -device cpu -b 16 -epochs 64 -data-dir /Users/keli/Desktop/CRI/data/NMNIST -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/NICE/output -opt adam -lr 0.001 -j 8
 
     # Conversion
-    # python main.py -T 16 -channels 102 -device cpu -convert
+    # python main_quant.py -T 16 -channels 102 -device cpu -convert
     
     parser = argparse.ArgumentParser(description='Classify NMNIST')
     parser.add_argument('-T', default=16, type=int, help='simulating time-steps')
