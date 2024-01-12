@@ -79,7 +79,7 @@ def main():
     n_parameters = sum(p.numel() for p in net.parameters() if p.requires_grad)
     print(f"number of params: {n_parameters}")
     
-    if args.resume_path != "" or args.train:
+    if args.train:
         print('Start Training')
         train(args, net, train_loader, test_loader, device, scaler)
     
@@ -106,7 +106,7 @@ def main():
                         backend=backend,
                         v_threshold = v_threshold,
                         embed_dim=0,
-                        dvs = True)
+                        dvs = args.dvs)
         cn.layer_converter(net_quan)
         cn.save_model()
     
@@ -114,7 +114,7 @@ def main():
         #Weight, Bias Quantization 
         qn = Quantize_Network(w_alpha=4) 
         net_quan = qn.quantize(net)
-        net_quan.to(args.device)
+        net_quan.to(device)
         
         validate(net_quan, test_loader, device)
         
