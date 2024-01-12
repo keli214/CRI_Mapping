@@ -31,6 +31,8 @@ parser.add_argument('-dvs', action='store_true', default=False, help='Training w
 parser.add_argument('-j', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
 parser.add_argument('-opt', type=str, help='use which optimizer. SDG or Adam')
+parser.add_argument('-convert', action='store_true', help='Convert the network for CRI')
+parser.add_argument('-test', action='store_true', help='Test the quantized network for CRI')
 
 def main():
     
@@ -82,6 +84,10 @@ def main():
         train(args, net, train_loader, test_loader, device, scaler)
     
     if args.convert:
+        if args.resume_path != "":
+            checkpoint = torch.load(args.resume_path, map_location=device)
+            net.load_state_dict(checkpoint['net'])
+            
         #Weight, Bias Quantization 
         qn = Quantize_Network(w_alpha=4) 
         net_quan = qn.quantize(net)
@@ -99,7 +105,8 @@ def main():
                         input_shape = input_shape,
                         backend=backend,
                         v_threshold = v_threshold,
-                        embed_dim=0)
+                        embed_dim=0,
+                        dvs = True)
         cn.layer_converter(net_quan)
         cn.save_model()
     
