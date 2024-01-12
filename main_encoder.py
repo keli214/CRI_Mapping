@@ -120,6 +120,9 @@ def main():
         if args.resume_path != "":
             checkpoint = torch.load(args.resume_path, map_location=device)
             net.load_state_dict(checkpoint['net'])
+            
+        net.eval()
+        
         if args.quant:
             #Fold the BN layer 
             bn = BN_Folder() 
