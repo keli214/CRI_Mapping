@@ -111,12 +111,17 @@ def main():
         cn.save_model()
     
     if args.test:
-        #Weight, Bias Quantization 
-        qn = Quantize_Network(w_alpha=4) 
-        net_quan = qn.quantize(net)
-        net_quan.to(device)
-        
-        validate(args, net_quan, test_loader, device)
+        if args.resume_path != "":
+            checkpoint = torch.load(args.resume_path, map_location=device)
+            net.load_state_dict(checkpoint['net'])
+        if args.quant:
+            #Weight, Bias Quantization 
+            qn = Quantize_Network(w_alpha=4) 
+            net_quan = qn.quantize(net)
+            net_quan.to(device)
+            validate(args, net_quan, test_loader, device)
+        else:
+            validate(args, net, test_loader, device)
         
 if __name__ == '__main__':
     main()
