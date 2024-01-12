@@ -21,7 +21,7 @@ def main():
     # Conversion
     # python main_quant.py -T 16 -channels 102 -device cpu -convert
     
-    # Test BN
+    # Test quantization
     # python main_quant.py -T 16 -channels 102 -device cpu -test -resume ./output/T16_b16_adam_lr0.001_c102/checkpoint_max.pth
     
     parser = argparse.ArgumentParser(description='Classify NMNIST')
@@ -137,7 +137,6 @@ def main():
                 frame = frame.transpose(0, 1)  # [N, T, C, H, W] -> [T, N, C, H, W]
                 label = label.to(args.device)
                 label_onehot = F.one_hot(label, args.labels).float()
-
                 if scaler is not None:
                     with amp.autocast():
                         out_fr = net(frame).mean(0)

@@ -32,9 +32,14 @@ Args:
 def train(args, net, train_loader, test_loader, device, scaler):  
     start_epoch = 0
     max_test_acc = -1
-   
-    optimizer = torch.optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)
-    # optimizer = torch.optim.Adam(net.parameters(), lr=args.lr)
+    
+    if args.opt == 'sgd':
+        optimizer = torch.optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)
+    elif args.opt == 'adam':
+        optimizer = torch.optim.Adam(net.parameters(), lr=args.lr)
+    else:
+        raise NotImplementedError(args.opt)
+
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
     loss_fun = nn.MSELoss()
     #loss_fun = nn.CrossEntropyLoss()
@@ -42,7 +47,7 @@ def train(args, net, train_loader, test_loader, device, scaler):
     encoder, writer = None, None
     if args.encoder:
         encoder = encoding.PoissonEncoder()
-        # encoder = encoding.LatencyEncoder(args.num_steps)
+        # encoder = encoding.LatencyEncoder(args.T)
             
     if args.resume_path != "":
         checkpoint = torch.load(args.resume_path, map_location=device)
@@ -73,43 +78,52 @@ def train(args, net, train_loader, test_loader, device, scaler):
                         if args.transformer:
                             encoded_img = encoder(img)
                             out_fr += net(encoded_img)
+                        if args.dvs:
+                            # [N, T, C, H, W] -> [T, N, C, H, W]
+                            img = img.transpose(0, 1) 
+                            for t in range(args.T):
+                                encoded_img = encoder(img[t])
+                                out_fr += net(encoded_img)
                         else:
-                            for t in range(args.num_steps):
+                            for t in range(args.T):
                                 encoded_img = encoder(img)
                                 out_fr += net(encoded_img)
-                            out_fr = out_fr/args.num_steps   
-                        loss = loss_fun(out_fr, label_onehot)
-                        scaler.scale(loss).backward()
-                        scaler.step(optimizer)
-                        scaler.update()
-                        
                 else:
                     if args.transformer:
                         encoded_img = encoder(img)
                         out_fr += net(encoded_img)
+                    if args.dvs:
+                        # [N, T, C, H, W] -> [T, N, C, H, W]
+                        img = img.transpose(0, 1) 
+                        for t in range(args.T):
+                            encoded_img = encoder(img[t])
+                            out_fr += net(encoded_img)
                     else:
-                        for t in range(args.num_steps):
+                        for t in range(args.T):
                             encoded_img = encoder(img)
                             out_fr += net(encoded_img)
-                        out_fr = out_fr/args.num_steps  
-                    loss = loss_fun(out_fr, label_onehot)
-                    loss.backward()
-                    optimizer.step()
+
             else:
                 if args.transformer:
                     out_fr += net(img)
+                if args.dvs:
+                    # [N, T, C, H, W] -> [T, N, C, H, W]
+                    img = img.transpose(0, 1)
+                    for t in range(args.T):
+                        out_fr += net(img[t])
                 else:
-                    for t in range(args.num_steps):
+                    for t in range(args.T):
                         out_fr += net(img)
-                    out_fr = out_fr/args.num_steps   
-                loss = loss_fun(out_fr, label_onehot)
-                if args.amp:
-                    scaler.scale(loss).backward()
-                    scaler.step(optimizer)
-                    scaler.update()
-                else:
-                    loss.backward()
-                    optimizer.step()
+            
+            out_fr = out_fr/args.T   
+            loss = loss_fun(out_fr, label_onehot)
+            if args.amp:
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                optimizer.step()
             
             train_samples += label.numel()
             train_loss += loss.item() * label.numel()
@@ -140,14 +154,28 @@ def train(args, net, train_loader, test_loader, device, scaler):
                 out_fr = 0.
                 
                 if args.encoder:
-                    for t in range(args.num_steps):
+                    if args.transformer:
                         encoded_img = encoder(img)
                         out_fr += net(encoded_img)
-                    out_fr = out_fr/args.num_steps   
+                    if args.dvs:
+                        img = img.transpose(0, 1) 
+                        for t in range(args.T):
+                            encoded_img = encoder(img)
+                            out_fr += net(encoded_img)
+                    else:
+                        for t in range(args.T):
+                            encoded_img = encoder(img)
+                            out_fr += net(encoded_img)  
                 else:
-                    for t in range(args.num_steps):
-                        out_fr += net(img)
-                    out_fr = out_fr/args.num_steps 
+                    if args.dvs:
+                        img = img.transpose(0, 1) 
+                        for i in range(args.T):
+                            out_fr += net(img[i])
+                    else:
+                        for t in range(args.T):
+                            out_fr += net(img)
+                
+                out_fr = out_fr/args.T 
                     
                 loss = loss_fun(out_fr, label_onehot)
 
@@ -178,12 +206,12 @@ def train(args, net, train_loader, test_loader, device, scaler):
         }
 
         if save_max:
-            torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_max_T_{args.num_steps}_lr_{args.lr}.pth'))
-            
-            checkpoint_ssa = {'ssa': net.block[0].attn.state_dict()}
-            torch.save(checkpoint_ssa, os.path.join(args.out_dir, f'checkpoint_max_ssa_T_{args.num_steps}_lr_{args.lr}.pth'))
+            torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_max_T_{args.T}_lr_{args.lr}.pth'))
+            if args.transformer:
+                checkpoint_ssa = {'ssa': net.block[0].attn.state_dict()}
+                torch.save(checkpoint_ssa, os.path.join(args.out_dir, f'checkpoint_max_ssa_T_{args.T}_lr_{args.lr}.pth'))
 
-        torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_latest_T_{args.num_steps}_lr_{args.lr}.pth'))
+        torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_latest_T_{args.T}_lr_{args.lr}.pth'))
 
         print(f'epoch = {epoch}, train_loss ={train_loss: .4f}, train_acc ={train_acc: .4f}, test_loss ={test_loss: .4f}, test_acc ={test_acc: .4f}, max_test_acc ={max_test_acc: .4f}')
         print(f'train speed ={train_speed: .4f} images/s, test speed ={test_speed: .4f} images/s')
@@ -214,16 +242,27 @@ def validate(args, net, test_loader, device):
             label_onehot = F.one_hot(label, 10).float()
             out_fr = 0.
             if args.encoder:
-                for t in range(args.num_steps):
-                    encoded_img = encoder(img)
-                    out_fr += net(encoded_img)
-                out_fr = out_fr/args.num_steps
-            else:
-                for t in range(args.num_steps):
-                    out_fr += net(img)
-                out_fr = out_fr/args.num_steps
+                if args.dvs:
+                        img = img.transpose(0, 1) 
+                        for t in range(args.T):
+                            encoded_img = encoder(img)
+                            out_fr += net(encoded_img)
+                else:
+                    for t in range(args.T):
+                        encoded_img = encoder(img)
+                        out_fr += net(encoded_img)
 
-                
+            else:
+                if args.dvs:
+                        img = img.transpose(0, 1) 
+                        for i in range(args.T):
+                            out_fr += net(img[i])
+                else:
+                    for t in range(args.T):
+                        out_fr += net(img)
+            
+            out_fr = out_fr/args.T
+
             loss = loss_fun(out_fr, label_onehot)
             test_samples += label.numel()
             test_loss += loss.item() * label.numel()
