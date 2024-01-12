@@ -6,7 +6,7 @@ from torch.cuda import amp
 from spikingjelly.datasets.n_mnist import NMNIST
 from spikingjelly.activation_based import functional, surrogate, neuron, layer
 from utils import train, validate
-from hs_api.converter import CRI_Converter, Quantize_Network
+from hs_api.converter import CRI_Converter, Quantize_Network, BN_Folder
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-resume_path', default='', type=str, help='checkpoint file')
@@ -34,6 +34,7 @@ parser.add_argument('-opt', type=str, help='use which optimizer. SDG or Adam')
 parser.add_argument('-convert', action='store_true', help='Convert the network for CRI')
 parser.add_argument('-test', action='store_true', help='Test the network for CRI')
 parser.add_argument('-quant', action='store_true', help='Test the quantized network for CRI')
+parser.add_argument('-alpha',  default=4, type=int, help='Range of value for quantization')
 
 def main():
     
@@ -89,9 +90,13 @@ def main():
             checkpoint = torch.load(args.resume_path, map_location=device)
             net.load_state_dict(checkpoint['net'])
             
+        #Fold the BN layer 
+        bn = BN_Folder() 
+        net_bn = bn.fold(net)
+            
         #Weight, Bias Quantization 
-        qn = Quantize_Network(w_alpha=4) 
-        net_quan = qn.quantize(net)
+        qn = Quantize_Network(w_alpha=args.alpha) 
+        net_quan = qn.quantize(net_bn)
         
         #Set the parameters for conversion
         input_layer = 0 #first pytorch layer that acts as synapses, indexing begins at 0 
@@ -116,9 +121,12 @@ def main():
             checkpoint = torch.load(args.resume_path, map_location=device)
             net.load_state_dict(checkpoint['net'])
         if args.quant:
+            #Fold the BN layer 
+            bn = BN_Folder() 
+            net_bn = bn.fold(net)
             #Weight, Bias Quantization 
-            qn = Quantize_Network(w_alpha=4) 
-            net_quan = qn.quantize(net)
+            qn = Quantize_Network(w_alpha=args.alpha) 
+            net_quan = qn.quantize(net_bn)
             net_quan.to(device)
             validate(args, net_quan, test_loader, device)
         else:
