@@ -116,7 +116,7 @@ def main():
         net_quan = qn.quantize(net)
         net_quan.to(device)
         
-        validate(net_quan, test_loader, device)
+        validate(args, net_quan, test_loader, device)
         
 if __name__ == '__main__':
     main()
