@@ -32,7 +32,8 @@ parser.add_argument('-j', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
 parser.add_argument('-opt', type=str, help='use which optimizer. SDG or Adam')
 parser.add_argument('-convert', action='store_true', help='Convert the network for CRI')
-parser.add_argument('-test', action='store_true', help='Test the quantized network for CRI')
+parser.add_argument('-test', action='store_true', help='Test the network for CRI')
+parser.add_argument('-quant', action='store_true', help='Test the quantized network for CRI')
 
 def main():
     
