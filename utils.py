@@ -82,7 +82,7 @@ def train(args, net, train_loader, test_loader, device, scaler):
                             # [N, T, C, H, W] -> [T, N, C, H, W]
                             img = img.transpose(0, 1) 
                             for t in range(args.T):
-				breakpoint()
+                                breakpoint()
                                 encoded_img = encoder(img[t])
                                 out_fr += net(encoded_img)
                         else:
