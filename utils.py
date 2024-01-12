@@ -82,6 +82,7 @@ def train(args, net, train_loader, test_loader, device, scaler):
                             # [N, T, C, H, W] -> [T, N, C, H, W]
                             img = img.transpose(0, 1) 
                             for t in range(args.T):
+				breakpoint()
                                 encoded_img = encoder(img[t])
                                 out_fr += net(encoded_img)
                         else:
@@ -160,7 +161,7 @@ def train(args, net, train_loader, test_loader, device, scaler):
                     if args.dvs:
                         img = img.transpose(0, 1) 
                         for t in range(args.T):
-                            encoded_img = encoder(img)
+                            encoded_img = encoder(img[t])
                             out_fr += net(encoded_img)
                     else:
                         for t in range(args.T):
@@ -169,8 +170,8 @@ def train(args, net, train_loader, test_loader, device, scaler):
                 else:
                     if args.dvs:
                         img = img.transpose(0, 1) 
-                        for i in range(args.T):
-                            out_fr += net(img[i])
+                        for t in range(args.T):
+                            out_fr += net(img[t])
                     else:
                         for t in range(args.T):
                             out_fr += net(img)
@@ -245,7 +246,7 @@ def validate(args, net, test_loader, device):
                 if args.dvs:
                         img = img.transpose(0, 1) 
                         for t in range(args.T):
-                            encoded_img = encoder(img)
+                            encoded_img = encoder(img[t])
                             out_fr += net(encoded_img)
                 else:
                     for t in range(args.T):
@@ -255,8 +256,8 @@ def validate(args, net, test_loader, device):
             else:
                 if args.dvs:
                         img = img.transpose(0, 1) 
-                        for i in range(args.T):
-                            out_fr += net(img[i])
+                        for t in range(args.T):
+                            out_fr += net(img[t])
                 else:
                     for t in range(args.T):
                         out_fr += net(img)
