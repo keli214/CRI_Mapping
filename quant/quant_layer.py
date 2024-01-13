@@ -1,5 +1,7 @@
-import torch.nn as nn
 import torch
+import torch.nn as nn
+from spikingjelly.activation_based import neuron, functional, surrogate, layer
+
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 import random
@@ -47,10 +49,14 @@ class weight_quantize_fn(nn.Module):
         self.wgt_alpha = wgt_alpha
         self.weight_q = weight_quantization(b=self.w_bit)
         # self.register_parameter('wgt_alpha', Parameter(torch.tensor(3.0)))
+        
     def forward(self, weight):
+        
+        # weights normalization
         # mean = weight.data.mean()
         # std = weight.data.std()
-        # weight = weight.add(-mean).div(std)      # weights normalization
+        # weight = weight.add(-mean).div(std)     
+        
         weight_q = self.weight_q(weight, self.wgt_alpha)
 
         return weight_q
@@ -85,28 +91,57 @@ def act_quantization(b):
     return _uq().apply
 
 
-class QuantLinear(nn.Linear):
-    def __init__(self, num_inputs, num_outputs, bias=False):
-        super(QuantLinear, self).__init__(num_inputs, num_outputs, bias)
-        self.layer_type = 'QuantLinear'
-        self.bit = 1
-        #self.bias = bias
-        self.weight_quant = weight_quantize_fn(w_bit=self.bit, wgt_alpha=1)
-        self.act_alq = act_quantization(self.bit)
-        self.act_alpha = torch.nn.Parameter(torch.tensor(1.0))
-        self.weight_q  = torch.nn.Parameter(torch.zeros([num_inputs, num_outputs]))
+class QuantConv2d(nn.Conv2d):
+    def __init__(self, num_inputs, num_outputs, kernel_size, padding, bias=False, bits = 16, alpha = 4.0):
+        super(QuantConv2d, self).__init__(in_channels=num_inputs, out_channels=num_outputs, kernel_size=kernel_size, padding=padding, bias=bias)
+        self.layer_type = 'QuantConv2d'
+        self.bits = bits
+        self.alpha = alpha
+        self.weight_quant = weight_quantize_fn(w_bit=self.bits, wgt_alpha=self.alpha)
+        self.act_alq = act_quantization(self.bits)
+        self.act_alpha = nn.Parameter(torch.tensor(self.alpha))
+        self.weight_q  = nn.Parameter(torch.zeros(self.weight.shape))
         
     def forward(self, x):
         # breakpoint()
         weight_q = self.weight_quant(self.weight)       
         #self.register_parameter('weight_q', Parameter(weight_q))  # Mingu added
-        self.weight_q = torch.nn.Parameter(weight_q)  # Store weight_q during the training
+        self.weight_q = nn.Parameter(weight_q)  # Store weight_q during the training
         x = self.act_alq(x, self.act_alpha)
+        output = []
+        for t in x:
+            y = F.conv2d(t, self.weight_q, self.bias, padding=self.padding)
+            output.append(y)
         
-        return F.linear(x, self.weight_q, self.bias)
+        return torch.stack(output, dim=0)
     
     def show_params(self):
         wgt_alpha = round(self.weight_quant.wgt_alpha.data.item(), 3)
         act_alpha = round(self.act_alpha.data.item(), 3)
         print('clipping threshold weight alpha: {:2f}, activation alpha: {:2f}'.format(wgt_alpha, act_alpha))
         
+class QuantLinear(nn.Linear):
+    def __init__(self, num_inputs, num_outputs, bits = 16, alpha = 4.0, bias=False):
+        super(QuantLinear, self).__init__(num_inputs, num_outputs, bias)
+        self.layer_type = 'QuantLinear'
+        self.bits = bits
+        self.alpha = alpha
+        self.delta = self.alpha/(2**(self.bits-1)-1)
+        self.weight_quant = weight_quantize_fn(w_bit=self.bits, wgt_alpha=self.alpha)
+        self.act_alq = act_quantization(self.bits)
+        self.act_alpha = nn.Parameter(torch.tensor(self.alpha))
+        self.weight_q  = nn.Parameter(torch.zeros([num_inputs, num_outputs]))
+        
+    def forward(self, x):
+        weight_q = self.weight_quant(self.weight)       
+        #self.register_parameter('weight_q', Parameter(weight_q))  # Mingu added
+        self.weight_q = nn.Parameter(weight_q/self.delta)  # Store weight_q during the training
+        x = self.act_alq(x, self.act_alpha)/self.delta
+        output = F.linear(x, self.weight_q, self.bias)
+        return output
+    
+    def show_params(self):
+        wgt_alpha = round(self.weight_quant.wgt_alpha.data.item(), 3)
+        act_alpha = round(self.act_alpha.data.item(), 3)
+        print('clipping threshold weight alpha: {:2f}, activation alpha: {:2f}'.format(wgt_alpha, act_alpha))
+
