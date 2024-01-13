@@ -132,16 +132,30 @@ def main():
             config['global_neuron_params'] = {}
             config['global_neuron_params']['v_thr'] = int(qn.v_threshold)
             
-            softwareNetwork = CRI_network(dict(cn.axon_dict),
-                              connections=dict(cn.neuron_dict),
-                              config=config,target='simpleSim', 
-                              outputs = cn.output_neurons,
-                              coreID=1)
-            
             #TODO: Get the number during conversion
             cn.bias_start_idx = int(2*28*28)
+        
+            if args.hardware:
+                hardwareNetwork = CRI_network(dict(cn.axon_dict),
+                              connections=dict(cn.neuron_dict),
+                              config=config,target='CRI', 
+                              outputs = cn.output_neurons,
+                              coreID=1)
+                validate(args, hardwareNetwork, test_loader, device, cn=cn)
+                
+            else:    
+                softwareNetwork = CRI_network(dict(cn.axon_dict),
+                                connections=dict(cn.neuron_dict),
+                                config=config,target='simpleSim', 
+                                outputs = cn.output_neurons,
+                                coreID=1)
+                validate(args, softwareNetwork, test_loader, device, cn=cn)
             
-            validate(args, softwareNetwork, test_loader, device, cn=cn)
+            
+            
+            
+            
+            
     
     if args.test:
         if args.resume_path != "":

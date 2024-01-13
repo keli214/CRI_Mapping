@@ -257,9 +257,12 @@ def validate(args, net, test_loader, device, cn=None):
                     cri_input = cn.input_converter(encoded_img)
                 else:
                     cri_input = cn.input_converter(img)
-                    
-            out_fr = torch.tensor(cn.run_CRI_sw(cri_input,net), dtype=float)
             
+            if args.hardware:
+                out_fr = torch.tensor(cn.run_CRI_hw(cri_input,net), dtype=float)
+            else:
+                out_fr = torch.tensor(cn.run_CRI_sw(cri_input,net), dtype=float)
+                
             loss = loss_fun(out_fr, label_onehot)
             test_samples += label.numel()
             test_loss += loss.item() * label.numel()
