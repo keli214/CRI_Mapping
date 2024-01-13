@@ -138,9 +138,7 @@ def main():
                               outputs = cn.output_neurons,
                               coreID=1)
             
-            softwareNetwork = None
-            
-            #TODO: need to get the number during conversion
+            #TODO: Get the number during conversion
             cn.bias_start_idx = int(2*28*28)
             
             validate(args, softwareNetwork, test_loader, device, cn=cn)
