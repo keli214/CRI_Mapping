@@ -117,6 +117,7 @@ def train(args, net, train_loader, test_loader, device, scaler):
             
             out_fr = out_fr/args.T   
             loss = loss_fun(out_fr, label_onehot)
+            
             if args.amp:
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
@@ -218,9 +219,9 @@ def train(args, net, train_loader, test_loader, device, scaler):
         print(f'escape time = {(datetime.datetime.now() + datetime.timedelta(seconds=(time.time() - start_time) * (args.epochs - epoch))).strftime("%Y-%m-%d %H:%M:%S")}\n')
 
 
-def validate(args, net, test_loader, device):
+def validate(args, net, test_loader, device, cn=None):
     start_time = time.time()
-    net.eval()
+    
     test_loss = 0
     test_acc = 0
     test_samples = 0
@@ -235,40 +236,37 @@ def validate(args, net, test_loader, device):
     loss_fun = nn.MSELoss()
     #loss_fun = nn.CrossEntropyLoss()
     
-    with torch.no_grad():
+    if args.cri:
         for img, label in test_loader:
-            img = img.to(device)
+            img = img.to(device) # [N, T, C, H, W] 
             label = label.to(device)
             label_onehot = F.one_hot(label, 10).float()
             out_fr = 0.
-            if args.encoder:
-                if args.dvs:
-                        img = img.transpose(0, 1) 
-                        for t in range(args.T):
-                            encoded_img = encoder(img[t])
-                            out_fr += net(encoded_img)
-                else:
-                    for t in range(args.T):
-                        encoded_img = encoder(img)
-                        out_fr += net(encoded_img)
-
-            else:
-                if args.dvs:
-                        img = img.transpose(0, 1) 
-                        for t in range(args.T):
-                            out_fr += net(img[t])
-                else:
-                    for t in range(args.T):
-                        out_fr += net(img)
             
-            out_fr = out_fr/args.T
-
+            cri_input = None
+            
+            if args.dvs:
+                if args.encoder:
+                    encoded_img = encoder(img)
+                    cri_input = cn.input_converter(encoded_img)
+                else:
+                    cri_input = cn.input_converter(img)
+            else:
+                if args.encoder:
+                    encoded_img = encoder(img)
+                    cri_input = cn.input_converter(encoded_img)
+                else:
+                    cri_input = cn.input_converter(img)
+                    
+            out_fr = torch.tensor(cn.run_CRI_sw(cri_input,net), dtype=float)
+            
             loss = loss_fun(out_fr, label_onehot)
             test_samples += label.numel()
             test_loss += loss.item() * label.numel()
             
             test_acc += (out_fr.argmax(1) == label).float().sum().item()
-            functional.reset_net(net) #reset the membrane potential after each img
+            functional.reset_net(net) #reset the membrane potential after each img        
+        
         test_time = time.time()
         test_speed = test_samples / (test_time - start_time)
         test_loss /= test_samples
@@ -276,7 +274,52 @@ def validate(args, net, test_loader, device):
         
         if args.writer:
             writer.add_scalar('test_loss', test_loss)
-            writer.add_scalar('test_acc', test_acc)
+            writer.add_scalar('test_acc', test_acc)            
+                    
+    
+    else:
+        
+        net.eval()
+        
+        with torch.no_grad():
+            for img, label in test_loader:
+                img = img.to(device)
+                label = label.to(device)
+                label_onehot = F.one_hot(label, 10).float()
+                out_fr = 0.
+                
+                if args.dvs:
+                    img = img.transpose(0, 1) 
+                    if args.encoder:
+                        for t in range(args.T):
+                            encoded_img = encoder(img[t])
+                            out_fr += net(encoded_img)
+                    else:
+                        for t in range(args.T):
+                            out_fr += net(img[t])
+                else:
+                    if args.encoder:
+                        encoded_img = encoder(img)
+                        out_fr += net(img)
+                    else:
+                        out_fr += net(img)
+                
+                out_fr = out_fr/args.T
+
+                loss = loss_fun(out_fr, label_onehot)
+                test_samples += label.numel()
+                test_loss += loss.item() * label.numel()
+                
+                test_acc += (out_fr.argmax(1) == label).float().sum().item()
+                functional.reset_net(net) #reset the membrane potential after each img
+            test_time = time.time()
+            test_speed = test_samples / (test_time - start_time)
+            test_loss /= test_samples
+            test_acc /= test_samples
+            
+            if args.writer:
+                writer.add_scalar('test_loss', test_loss)
+                writer.add_scalar('test_acc', test_acc)
     
     print(f'test_loss ={test_loss: .4f}, test_acc ={test_acc: .4f}')
     print(f'test speed ={test_speed: .4f} images/s')

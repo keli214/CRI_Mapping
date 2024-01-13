@@ -7,6 +7,8 @@ from spikingjelly.datasets.n_mnist import NMNIST
 from spikingjelly.activation_based import functional, surrogate, neuron, layer
 from utils import train, validate
 from hs_api.converter import CRI_Converter, Quantize_Network, BN_Folder
+from hs_api.api import CRI_network
+from models import NMNISTNet
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-resume_path', default='', type=str, help='checkpoint file')
@@ -30,16 +32,17 @@ parser.add_argument('-transformer', action='store_true', default=False, help='Tr
 parser.add_argument('-dvs', action='store_true', default=False, help='Training with DVS datasets')
 parser.add_argument('-j', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-parser.add_argument('-opt', type=str, help='use which optimizer. SDG or Adam')
+parser.add_argument('-opt', default="adm", type=str, help='use which optimizer. SDG or Adam')
 parser.add_argument('-convert', action='store_true', help='Convert the network for CRI')
-parser.add_argument('-test', action='store_true', help='Test the network for CRI')
+parser.add_argument('-test', action='store_true', help='Test the network')
 parser.add_argument('-quant', action='store_true', help='Test the quantized network for CRI')
 parser.add_argument('-alpha',  default=4, type=int, help='Range of value for quantization')
-
+parser.add_argument('-cri',  action='store_true', help='Test converted network')
+parser.add_argument('-save',  action='store_true', help='Save converted network')
 def main():
     
     # Train
-    # python main_encoder.py -train -data-dir /Users/keli/Desktop/CRI/data/NMNIST -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/runs/nmnist -T 16 -channels 102 -encoder -dvs -opt adam -lr 0.001 -j 8
+    # python main_encoder.py -data-dir /Users/keli/Desktop/CRI/data/NMNIST -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/runs/nmnist -T 16 -channels 102 -j 8 -convert -cri
     
     args = parser.parse_args()
     print(args)
@@ -74,7 +77,8 @@ def main():
     )
     
     # Initialize SnnTorch/SpikingJelly model
-    net = parametric_lif_net.NMNISTNet(channels=args.channels, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
+    # net = parametric_lif_net.NMNISTNet(channels=args.channels, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
+    net = NMNISTNet(channels=args.channels, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
     
     net.to(device)
     
@@ -86,10 +90,13 @@ def main():
         train(args, net, train_loader, test_loader, device, scaler)
     
     if args.convert:
+        
         if args.resume_path != "":
             checkpoint = torch.load(args.resume_path, map_location=device)
             net.load_state_dict(checkpoint['net'])
             
+        net.eval()
+        
         #Fold the BN layer 
         bn = BN_Folder() 
         net_bn = bn.fold(net)
@@ -113,8 +120,30 @@ def main():
                         v_threshold = v_threshold,
                         embed_dim=0,
                         dvs = args.dvs)
+        
         cn.layer_converter(net_quan)
-        cn.save_model()
+                
+        if args.save:
+            cn.save_model()
+        
+        if args.cri:
+            config = {}
+            config['neuron_type'] = "I&F"
+            config['global_neuron_params'] = {}
+            config['global_neuron_params']['v_thr'] = int(qn.v_threshold)
+            
+            softwareNetwork = CRI_network(dict(cn.axon_dict),
+                              connections=dict(cn.neuron_dict),
+                              config=config,target='simpleSim', 
+                              outputs = cn.output_neurons,
+                              coreID=1)
+            
+            softwareNetwork = None
+            
+            #TODO: need to get the number during conversion
+            cn.bias_start_idx = int(2*28*28)
+            
+            validate(args, softwareNetwork, test_loader, device, cn=cn)
     
     if args.test:
         if args.resume_path != "":
@@ -134,6 +163,7 @@ def main():
             validate(args, net_quan, test_loader, device)
         else:
             validate(args, net, test_loader, device)
+        
         
 if __name__ == '__main__':
     main()

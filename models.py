@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 from spikingjelly.activation_based import neuron, functional, surrogate, layer
+from quant.quant_layer import QuantConv2d, QuantLinear
+from copy import deepcopy
 
 class CIFAR10(nn.Module):
     def __init__(self, T: int, channels: int, features: int):
@@ -361,3 +363,97 @@ class SSA(nn.Module):
         x = self.proj_lif(self.proj_linear(x))
         
         return x
+    
+    
+class QuantNMNISTNet(nn.Module):
+    def __init__(self, channels=128, spiking_neuron: callable = None, **kwargs):
+        super().__init__()
+
+        self.conv_fc = nn.Sequential(
+            QuantConv2d(2, channels, kernel_size=3, padding=1, bias=False),
+            layer.BatchNorm2d(channels),
+            spiking_neuron(**deepcopy(kwargs)),
+            layer.MaxPool2d(2, 2),
+
+            QuantConv2d(channels, channels, kernel_size=3, padding=1, bias=False),
+            layer.BatchNorm2d(channels),
+            spiking_neuron(**deepcopy(kwargs)),
+            layer.MaxPool2d(2, 2),
+
+            layer.Flatten(),
+            layer.Dropout(0.5),
+            QuantLinear(channels * 8 * 8, 2048),
+            spiking_neuron(**deepcopy(kwargs)),
+            layer.Dropout(0.5),
+            QuantLinear(2048, 100),
+            spiking_neuron(**deepcopy(kwargs)),
+            layer.VotingLayer()
+        )
+
+
+    def forward(self, x: torch.Tensor):
+        return self.conv_fc(x)
+
+class NMNISTNet(nn.Module):
+    def __init__(self, channels=128, spiking_neuron: callable = None, **kwargs):
+        super().__init__()
+
+        self.conv_fc = nn.Sequential(
+            layer.Conv2d(2, channels, kernel_size=3, padding=1, bias=False),
+            layer.BatchNorm2d(channels),
+            spiking_neuron(**deepcopy(kwargs)),
+            layer.MaxPool2d(2, 2),
+
+            layer.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
+            layer.BatchNorm2d(channels),
+            spiking_neuron(**deepcopy(kwargs)),
+            layer.MaxPool2d(2, 2),
+
+            layer.Flatten(),
+            layer.Dropout(0.5),
+            layer.Linear(channels * 8 * 8, 2048),
+            spiking_neuron(**deepcopy(kwargs)),
+            layer.Dropout(0.5),
+            layer.Linear(2048, 10),
+            spiking_neuron(**deepcopy(kwargs))
+        )
+
+
+    def forward(self, x: torch.Tensor):
+        return self.conv_fc(x)
+    
+class QuantMnist(nn.Module):
+    def __init__(self, features = 1000):
+        super().__init__()
+        self.layer = nn.Sequential(
+            layer.Flatten(),
+            QuantLinear(28 * 28, features, bias=False, alpha=4.0),
+            neuron.IFNode(surrogate_function=surrogate.ATan()),
+            QuantLinear(features, 10, bias=False, alpha=4.0),
+            neuron.IFNode(surrogate_function=surrogate.ATan()),
+            )
+        
+    def forward(self, x):
+        return self.layer(x)
+    
+class QuantCSNN(nn.Module):
+    def __init__(self, T: int, channels = 128):
+        super().__init__()
+        self.T = T
+        self.conv_fc = nn.Sequential(
+            QuantConv2d(1, channels, kernel_size=3, padding=1, bias=False),
+            layer.BatchNorm2d(channels),
+            neuron.IFNode(surrogate_function=surrogate.ATan()),
+            layer.MaxPool2d(2, 2),  # 14 * 14
+            
+            layer.Flatten(),
+            QuantLinear(channels * 14 * 14, 10, bias=False),
+            neuron.IFNode(surrogate_function=surrogate.ATan()),
+        )
+        
+    def forward(self, x):
+        # x.shape = [N, C, H, W]
+        x_seq = x.unsqueeze(0).repeat(self.T, 1, 1, 1, 1)  # [N, C, H, W] -> [T, N, C, H, W]
+        x_seq = self.conv_fc(x_seq)
+        fr = x_seq.mean(0)
+        return fr
