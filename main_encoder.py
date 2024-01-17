@@ -28,9 +28,9 @@ parser.add_argument('-encoder',action='store_true',default=False, help='Using sp
 parser.add_argument('-amp', action='store_true', default=False, help='Use mixed percision training')
 parser.add_argument('-num_batches', default=4, type=int)
 parser.add_argument('-transformer', action='store_true', default=False, help='Training transformer model')
-parser.add_argument('-j', default=4, type=int, metavar='N',
+parser.add_argument('-j', default=8, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
-parser.add_argument('-opt', default="adm", type=str, help='use which optimizer. SDG or Adam')
+parser.add_argument('-opt', default="adam", type=str, help='use which optimizer. SDG or Adam')
 parser.add_argument('-convert', action='store_true', help='Convert the network for CRI')
 parser.add_argument('-test', action='store_true', help='Test the PyTorch network')
 parser.add_argument('-dvs', action='store_true', default=False, help='Using the DVS datasets')
@@ -43,10 +43,10 @@ parser.add_argument('-hardware',action='store_true', default=False, help='Run th
 def main():
     
     # Train
-    # python main_encoder.py -data-dir /Users/keli/Desktop/CRI/data/NMNIST -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/runs/nmnist -T 16 -channels 102 -j 8 -convert -cri
+    # python main_encoder.py -data-dir /Users/keli/Desktop/CRI/data/NMNIST -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/runs/nmnist -channels 102 -convert -cri
     
     # Verify on Hardware with DVS data
-    # python main_encoder.py -data-dir /Users/keli/Desktop/CRI/data/NMNIST -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/runs/nmnist -T 16 -channels 102 -j 8 -resume_path runs/nmnist/checkpoint_max_T_16_lr_0.001.pth -convert -cri -hardware -encoder -dvs
+    # python main_encoder.py -data-dir /Users/keli/Desktop/CRI/data/NMNIST -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/runs/nmnist -channels 102 -resume_path runs/nmnist/checkpoint_max_T_16_lr_0.001.pth -convert -cri -hardware -encoder -dvs
     args = parser.parse_args()
     print(args)
 
@@ -154,12 +154,6 @@ def main():
                                 outputs = cn.output_neurons,
                                 coreID=1)
                 validate(args, softwareNetwork, test_loader, device, cn=cn)
-            
-            
-            
-            
-            
-            
     
     if args.test:
         if args.resume_path != "":
