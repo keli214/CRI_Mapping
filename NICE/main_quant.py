@@ -237,6 +237,7 @@ def main():
         
     if args.test:
         #Weight, Bias Quantization 
+        
         qn = Quantize_Network(w_alpha=4) 
         net_quan = qn.quantize(net)
         net_quan.to(args.device)
