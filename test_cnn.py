@@ -71,7 +71,7 @@ def main():
     )
     
     # Initialize SnnTorch/SpikingJelly model
-    net = CNN(channels=args.channels)
+    net = CNN(channels=args.channels, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
     
     net.to(device)
     
