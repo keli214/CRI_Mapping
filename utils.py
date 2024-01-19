@@ -259,7 +259,7 @@ def validate(args, net, test_loader, device, cn=None):
                     for t in range(args.T):
                         encoded_img = encoder(img[t])
                         cri_input.append(encoded_img)
-                    cri_input = cn.input_converter(cri_input)
+                    cri_input = cn.input_converter(torch.tensor(cri_input))
                 else:
                     cri_input = cn.input_converter(img.repeat(args.T, 1, 1, 1, 1))
             
