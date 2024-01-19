@@ -238,7 +238,7 @@ def validate(args, net, test_loader, device, cn=None):
     
     if args.cri:
         for img, label in test_loader:
-            img = img.to(device) # [N, T, C, H, W] 
+            img = img.to(device) # dvs: [N, T, C, H, W] img: [B, C, H, W]
             label = label.to(device)
             label_onehot = F.one_hot(label, 10).float()
             out_fr = 0.
@@ -246,29 +246,33 @@ def validate(args, net, test_loader, device, cn=None):
             cri_input = None
             
             if args.dvs:
+                img = img.transpose(0, 1) # [T, N, C, H, W] 
                 if args.encoder:
                     encoded_img = encoder(img)
                     cri_input = cn.input_converter(encoded_img)
                 else:
                     cri_input = cn.input_converter(img)
             else:
-                if args.encoder:
-                    encoded_img = encoder(img)
-                    cri_input = cn.input_converter(encoded_img)
+                if args.encoder: 
+                    img_repeats = img.repeat(args.T, 1, 1, 1, 1)
+                    cri_input = []
+                    for t in range(args.T):
+                        encoded_img = encoder(img[t])
+                        cri_input.append(encoded_img)
+                    cri_input = cn.input_converter(cri_input)
                 else:
-                    cri_input = cn.input_converter(img)
+                    cri_input = cn.input_converter(img.repeat(args.T, 1, 1, 1, 1))
             
             if args.hardware:
-                out_fr = torch.tensor(cn.run_CRI_hw(cri_input,net), dtype=float)
+                out_fr = torch.tensor(cn.run_CRI_hw(cri_input,net), dtype=float).to(device)
             else:
-                out_fr = torch.tensor(cn.run_CRI_sw(cri_input,net), dtype=float)
+                out_fr = torch.tensor(cn.run_CRI_sw(cri_input,net), dtype=float).to(device)
                 
             loss = loss_fun(out_fr, label_onehot)
             test_samples += label.numel()
             test_loss += loss.item() * label.numel()
             
-            test_acc += (out_fr.argmax(1) == label).float().sum().item()
-            functional.reset_net(net) #reset the membrane potential after each img        
+            test_acc += (out_fr.argmax(1) == label).float().sum().item()      
         
         test_time = time.time()
         test_speed = test_samples / (test_time - start_time)
@@ -286,7 +290,7 @@ def validate(args, net, test_loader, device, cn=None):
         
         with torch.no_grad():
             for img, label in test_loader:
-                img = img.to(device)
+                img = img.to(device) 
                 label = label.to(device)
                 label_onehot = F.one_hot(label, 10).float()
                 out_fr = 0.
