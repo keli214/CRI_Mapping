@@ -184,17 +184,17 @@ class Mnist(nn.Module):
         return self.layer(x)
 
 class CNN(nn.Module):
-    def __init__(self, channels = 8):
+    def __init__(self, channels = 8, spiking_neuron: callable = None, **kwargs):
         super().__init__()
         self.layer = nn.Sequential(
             layer.Conv2d(1, channels, kernel_size=3, padding=1, bias=False),
             layer.BatchNorm2d(channels),
-            neuron.IFNode(surrogate_function=surrogate.ATan()),
+            spiking_neuron(**deepcopy(kwargs)),
             layer.MaxPool2d(2, 2),  # 14 * 14
             
             layer.Flatten(),
             layer.Linear(channels * 14 * 14, 10, bias=False),
-            neuron.IFNode(surrogate_function=surrogate.ATan()),
+            spiking_neuron(**deepcopy(kwargs)),
 
             )
         
