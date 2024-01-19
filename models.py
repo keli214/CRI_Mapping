@@ -190,7 +190,7 @@ class CNN(nn.Module):
             layer.Conv2d(1, channels, kernel_size=3, padding=1, bias=False),
             layer.BatchNorm2d(channels),
             neuron.IFNode(surrogate_function=surrogate.ATan()),
-            layer.AvgPool2d(2, 2),  # 14 * 14
+            layer.MaxPool2d(2, 2),  # 14 * 14
             
             layer.Flatten(),
             layer.Linear(channels * 14 * 14, 10, bias=False),
