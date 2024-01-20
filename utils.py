@@ -12,6 +12,7 @@ from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 from spikingjelly.activation_based.neuron import IFNode, LIFNode
 from torch.utils.tensorboard import SummaryWriter
 from torch.autograd import profiler
+import numpy as np
 
 def isSNNLayer(layer):
     return isinstance(layer, MultiStepLIFNode) or isinstance(layer, LIFNode) or isinstance(layer, IFNode)
@@ -237,16 +238,14 @@ def validate(args, net, test_loader, device, cn=None):
     #loss_fun = nn.CrossEntropyLoss()
     
     if args.cri:
+        # dvs: [B, T, C, H, W] regualr img: [B, C, H, W]
         for img, label in test_loader:
-            img = img.to(device) # dvs: [N, T, C, H, W] img: [B, C, H, W]
-            label = label.to(device)
             label_onehot = F.one_hot(label, 10).float()
             out_fr = 0.
             
             cri_input = None
             
             if args.dvs:
-                img = img.transpose(0, 1) # [T, N, C, H, W] 
                 if args.encoder:
                     encoded_img = encoder(img)
                     cri_input = cn.input_converter(encoded_img)
@@ -256,10 +255,10 @@ def validate(args, net, test_loader, device, cn=None):
                 if args.encoder: 
                     img_repeats = img.repeat(args.T, 1, 1, 1, 1)
                     cri_input = []
-                    for t in range(args.T):
-                        encoded_img = encoder(img[t])
+                    for t in range(args.T): 
+                        encoded_img = encoder(img_repeats[t])
                         cri_input.append(encoded_img)
-                    cri_input = cn.input_converter(torch.tensor(cri_input))
+                    cri_input = cn.input_converter(np.array(cri_input).transpose(1,0,2,3,4))
                 else:
                     cri_input = cn.input_converter(img.repeat(args.T, 1, 1, 1, 1))
             
