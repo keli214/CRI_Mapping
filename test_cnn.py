@@ -135,6 +135,7 @@ def main():
                               connections=dict(cn.neuron_dict),
                               config=config,target='CRI', 
                               outputs = cn.output_neurons,
+                              simDump=True,
                               coreID=1)
 
                 validate(args, hardwareNetwork, test_loader, device, cn=cn)
