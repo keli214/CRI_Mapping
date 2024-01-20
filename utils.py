@@ -258,7 +258,7 @@ def validate(args, net, test_loader, device, cn=None):
                     for t in range(args.T): 
                         encoded_img = encoder(img_repeats[t])
                         cri_input.append(encoded_img)
-                    cri_input = cn.input_converter(np.array(cri_input).transpose(1,0,2,3,4))
+                    cri_input = cn.input_converter(torch.stack(cri_input).transpose(0,1))
                 else:
                     cri_input = cn.input_converter(img.repeat(args.T, 1, 1, 1, 1))
             
