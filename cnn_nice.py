@@ -24,7 +24,6 @@ parser.add_argument('-T', default=16, type=int)
 parser.add_argument('-channels', default=80, type=int)
 parser.add_argument('-num_batches', default=4, type=int)
 parser.add_argument('-alpha',  default=4, type=int, help='Range of value for quantization')
-parser.add_argument('-hardware',action='store_true', default=False, help='Run the network on FPGA')
 
 def main():
     
@@ -105,11 +104,10 @@ def main():
     config['global_neuron_params']['v_thr'] = int(qn.v_threshold)
             
     #TODO: Get the number during conversion
-    CONV1_OUTPUT_SHAPE = (80, 34, 34)
-    CONV2_OUTPUT_SHAPE = (80, 17, 17)
+    CONV1_OUTPUT_SHAPE = (args.channels, 34, 34)
+    CONV2_OUTPUT_SHAPE = (args.channels, 17, 17)
     L1_OUTPUT_SHAPE = 2048
     OUTPUT_SHAPE = (10)
-    cn.bias_start_idx = int(80*8*8)
 
     #TODO: initialize One CRI network.
     net_cri = CRI_network(dict(cn.axon_dict),
