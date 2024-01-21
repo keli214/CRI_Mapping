@@ -65,8 +65,8 @@ def main():
     n_parameters = sum(p.numel() for p in net.parameters() if p.requires_grad)
     print(f"number of params: {n_parameters}")
     
-    # checkpoint = torch.load(args.resume_path, map_location=device)
-    # net.load_state_dict(checkpoint['net'])
+    checkpoint = torch.load(args.resume_path, map_location=device)
+    net.load_state_dict(checkpoint['net'])
             
     net.eval()
         
