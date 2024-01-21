@@ -22,7 +22,7 @@ parser.add_argument('-epochs', default=10, type=int)
 parser.add_argument('-lr', default=1e-3, type=float)
 parser.add_argument('-momentum', default=0.9, type=float, help='momentum for SGD')
 parser.add_argument('-T', default=16, type=int)
-parser.add_argument('-channels', default=128, type=int)
+parser.add_argument('-channels', default=80, type=int)
 parser.add_argument('-writer', action='store_true', default=False, help='Use torch summary')
 parser.add_argument('-encoder',action='store_true',default=False, help='Using spike rate encoder to process the input')
 parser.add_argument('-amp', action='store_true', default=False, help='Use mixed percision training')
@@ -36,7 +36,7 @@ parser.add_argument('-test', action='store_true', help='Test the PyTorch network
 parser.add_argument('-dvs', action='store_true', default=True, help='Using the DVS datasets')
 parser.add_argument('-quant', action='store_true', help='Test the quantized network ')
 parser.add_argument('-alpha',  default=4, type=int, help='Range of value for quantization')
-parser.add_argument('-cri',  action='store_true', default=True, help='Test the converted network')
+parser.add_argument('-cri',  action='store_true', default=False, help='Test the converted network')
 parser.add_argument('-save',  action='store_true', help='Save converted network')
 parser.add_argument('-hardware',action='store_true', default=False, help='Run the network on FPGA')
 
@@ -136,7 +136,7 @@ def main():
             config['global_neuron_params']['v_thr'] = int(qn.v_threshold)
             
             #TODO: Get the number during conversion
-            cn.bias_start_idx = int(2*28*28)
+            cn.bias_start_idx = int(2*34*34)
         
             if args.hardware:
                 hardwareNetwork = CRI_network(dict(cn.axon_dict),
