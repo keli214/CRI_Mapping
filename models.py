@@ -411,7 +411,7 @@ class NMNISTNet(nn.Module):
 
             layer.Flatten(),
             layer.Dropout(0.5),
-            layer.Linear(channels * 7 * 7, 2048),
+            layer.Linear(channels * 8 * 8, 2048),
             spiking_neuron(**deepcopy(kwargs)),
             layer.Dropout(0.5),
             layer.Linear(2048, 10),
