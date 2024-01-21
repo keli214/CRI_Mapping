@@ -399,8 +399,8 @@ class NMNISTNet(nn.Module):
         super().__init__()
 
         self.conv_fc = nn.Sequential(
-            layer.Conv2d(2, channels, kernel_size=3, padding=1, bias=False),
-            layer.BatchNorm2d(channels),
+            layer.Conv2d(2, channels, kernel_size=3, padding=1, bias=False), 
+            layer.BatchNorm2d(channels), 
             spiking_neuron(**deepcopy(kwargs)),
             layer.MaxPool2d(2, 2),
 
@@ -411,7 +411,7 @@ class NMNISTNet(nn.Module):
 
             layer.Flatten(),
             layer.Dropout(0.5),
-            layer.Linear(channels * 8 * 8, 2048),
+            layer.Linear(channels * 7 * 7, 2048),
             spiking_neuron(**deepcopy(kwargs)),
             layer.Dropout(0.5),
             layer.Linear(2048, 10),
