@@ -119,7 +119,6 @@ def main():
                         config=config,target='CRI', 
                         outputs = cn.output_neurons,
                         coreID=1)
-    net_cri = None
     
     encoder = encoding.PoissonEncoder()
     loss_fun = nn.MSELoss()
