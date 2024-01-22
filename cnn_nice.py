@@ -12,7 +12,7 @@ from hs_api.converter import CRI_Converter, Quantize_Network, BN_Folder
 from hs_api.api import CRI_network
 from models import NMNISTNet
 import time
-import hs_bridge
+# import hs_bridge
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-resume_path', default='', type=str, help='checkpoint file')
@@ -109,6 +109,7 @@ def main():
     #TODO: Get the number during conversion
     CONV1_OUTPUT_SHAPE = (args.channels, 34, 34)
     CONV2_OUTPUT_SHAPE = (args.channels, 17, 17)
+    LINEAR_INPUT_SHAPE = (args.channels, 8, 8)
     L1_OUTPUT_SHAPE = 2048
     OUTPUT_SHAPE = (10)
 
@@ -146,7 +147,8 @@ def main():
             for t in range(args.T):
                 # conv1
                 curr_input = ['a' + str(idx) for idx, axon in enumerate(encoded_img) if axon != 0]
-                axon_offset += len(curr_input)
+                axon_offset += np.prod(input_shape)
+                breakpoint()
                 conv1_out, latency, hbmAcc = net_cri.step(curr_input)
                 hwSpike, latency, hbmAcc = net_cri.step([])
                 conv1_out = conv1_out + hwSpike
@@ -166,7 +168,7 @@ def main():
                 # conv2
                 curr_input = np.where(curr_input.flatten() == 1)[0]
                 curr_input = ['a' + str(idx + axon_offset) for idx in curr_input]
-                axon_offset += len(curr_input)
+                axon_offset += np.prod(CONV2_OUTPUT_SHAPE)
                 conv2_out, latency, hbmAcc = net_cri.step(curr_input)
                 hwSpike, latency, hbmAcc = net_cri.step([])
                 conv2_out = conv2_out + hwSpike
@@ -186,7 +188,7 @@ def main():
                 # linear
                 curr_input = np.where(curr_input.flatten() == 1)[0]
                 curr_input = ['a' + str(idx + axon_offset) for idx in curr_input]
-                axon_offset += len(curr_input)
+                axon_offset += np.prod(LINEAR_INPUT_SHAPE)
                 bias_input = ['a' + str(idx) for idx in range(axon_offset, len(cn.axon_dict))]  
                 
                 linear_out, latency, hbmAcc = net_cri.step(curr_input+bias_input)
