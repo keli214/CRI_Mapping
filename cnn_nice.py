@@ -12,7 +12,7 @@ from hs_api.converter import CRI_Converter, Quantize_Network, BN_Folder
 from hs_api.api import CRI_network
 from models import NMNISTNet
 import time
-# import hs_bridge
+import hs_bridge
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-resume_path', default='', type=str, help='checkpoint file')
@@ -113,12 +113,13 @@ def main():
     L1_OUTPUT_SHAPE = 2048
     OUTPUT_SHAPE = (10)
 
-    #TODO: initialize One CRI network.
+    #initialize One CRI network.
     net_cri = CRI_network(dict(cn.axon_dict),
                         connections=dict(cn.neuron_dict),
                         config=config,target='CRI', 
                         outputs = cn.output_neurons,
                         coreID=1)
+    net_cri = None
     
     encoder = encoding.PoissonEncoder()
     loss_fun = nn.MSELoss()
@@ -146,7 +147,7 @@ def main():
             )
             for t in range(args.T):
                 # conv1
-                curr_input = ['a' + str(idx) for idx, axon in enumerate(encoded_img) if axon != 0]
+                curr_input = ['a' + str(idx) for idx, axon in enumerate(encoded_img[t].flatten()) if axon != 0]
                 axon_offset += np.prod(input_shape)
                 breakpoint()
                 conv1_out, latency, hbmAcc = net_cri.step(curr_input)
