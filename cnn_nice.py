@@ -46,7 +46,6 @@ def main():
         batch_size=args.b,
         shuffle=True,
         drop_last=True,
-        num_workers=4,
         pin_memory=True
     )
     test_loader = DataLoader(
@@ -54,7 +53,6 @@ def main():
         batch_size=args.b,
         shuffle=True,
         drop_last=False,
-        num_workers=4,
         pin_memory=True
     )
     
