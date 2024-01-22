@@ -59,7 +59,10 @@ def main():
     )
     
     # Initialize SnnTorch/SpikingJelly model
-    net = NMNISTNet(channels=args.channels, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
+    net = NMNISTNet(channels=args.channels, 
+                    spiking_neuron=neuron.LIFNode, 
+                    surrogate_function=surrogate.ATan(), 
+                    detach_reset=True)
     
     n_parameters = sum(p.numel() for p in net.parameters() if p.requires_grad)
     print(f"number of params: {n_parameters}")
@@ -144,10 +147,12 @@ def main():
                 # conv1
                 curr_input = ['a' + str(idx) for idx, axon in enumerate(encoded_img) if axon != 0]
                 axon_offset += len(curr_input)
-                conv1_out = net_cri.step(curr_input)
-                conv1_out = conv1_out + net_cri.step([])
+                conv1_out, latency, hbmAcc = net_cri.step(curr_input)
+                hwSpike, latency, hbmAcc = net_cri.step([])
+                conv1_out = conv1_out + hwSpike
                 if t == args.T - 1:
-                    conv1_out = conv1_out + net_cri.step([])
+                    hwSpike, latency, hbmAcc = net_cri.step([])
+                    conv1_out = conv1_out + hwSpike
                 
                 conv1_out_idx = [int(idx) for idx in conv1_out]
                 outputs = np.zeros(CONV1_OUTPUT_SHAPE).flatten()
@@ -162,10 +167,12 @@ def main():
                 curr_input = np.where(curr_input.flatten() == 1)[0]
                 curr_input = ['a' + str(idx + axon_offset) for idx in curr_input]
                 axon_offset += len(curr_input)
-                conv2_out = net_cri.step(curr_input)
-                conv2_out = conv2_out + net_cri.step([])
+                conv2_out, latency, hbmAcc = net_cri.step(curr_input)
+                hwSpike, latency, hbmAcc = net_cri.step([])
+                conv2_out = conv2_out + hwSpike
                 if t == args.T - 1:
-                    conv2_out = conv2_out + net_cri.step([])
+                    hwSpike, latency, hbmAcc = net_cri.step([])
+                    conv2_out = conv2_out + hwSpike
                 
                 conv2_out_idx = [int(idx)-neuron_offset for idx in conv2_out]
                 neuron_offset += np.prod(CONV2_OUTPUT_SHAPE)
@@ -182,10 +189,12 @@ def main():
                 axon_offset += len(curr_input)
                 bias_input = ['a' + str(idx) for idx in range(axon_offset, len(cn.axon_dict))]  
                 
-                linear_out = net_cri.step(curr_input+bias_input)
-                linear_out = linear_out + net_cri.step([])
+                linear_out, latency, hbmAcc = net_cri.step(curr_input+bias_input)
+                hwSpike, latency, hbmAcc = net_cri.step([])
+                linear_out = linear_out + hwSpike
                 if t == args.T - 1:
-                    linear_out = linear_out + net_cri.step([])
+                    hwSpike, latency, hbmAcc = net_cri.step([])
+                    linear_out = linear_out + hwSpike
                 
                 neuron_offset += np.prod(L1_OUTPUT_SHAPE)
                 linear_out_idx = [int(idx)-neuron_offset for idx in linear_out]
