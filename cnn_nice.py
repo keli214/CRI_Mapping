@@ -12,6 +12,7 @@ from hs_api.converter import CRI_Converter, Quantize_Network, BN_Folder
 from hs_api.api import CRI_network
 from models import NMNISTNet
 import time
+import pickle
 import hs_bridge
 
 parser = argparse.ArgumentParser()
@@ -97,8 +98,6 @@ def main():
     
     cn.layer_converter(net_quan)
     
-    breakpoint()
-    
     config = {}
     config['neuron_type'] = "I&F"
     config['global_neuron_params'] = {}
@@ -127,8 +126,7 @@ def main():
     test_acc = 0
     test_samples = 0
     
-    axon_offset = 0
-    neuron_offset = 0
+    b_idx = 0
     
     for img, label in test_loader:
         img = img.to(device)
@@ -136,6 +134,9 @@ def main():
         label_onehot = F.one_hot(label, 10).float()
         out_fr = 0.   
         cri_output = []
+        latency_hist = []
+        hbmacc_hist = []
+        b_idx += 1
         for b in range(args.b):
             spike_rate = np.zeros(OUTPUT_SHAPE)
             encoded_img = encoder(img[b])
@@ -143,18 +144,30 @@ def main():
                 len(cn.neuron_dict), False, 0
             )
             for t in range(args.T):
+                axon_offset = 0
+                neuron_offset = 0
+                
                 # conv1
                 curr_input = ['a' + str(idx) for idx, axon in enumerate(encoded_img[t].flatten()) if axon != 0]
                 axon_offset += np.prod(input_shape)
-                breakpoint()
+                
                 conv1_out, latency, hbmAcc = net_cri.step(curr_input)
+                latency_hist.append(latency)
+                hbmacc_hist.append(hbmAcc)
                 hwSpike, latency, hbmAcc = net_cri.step([])
+                latency_hist.append(latency)
+                hbmacc_hist.append(hbmAcc)
                 conv1_out = conv1_out + hwSpike
                 if t == args.T - 1:
                     hwSpike, latency, hbmAcc = net_cri.step([])
                     conv1_out = conv1_out + hwSpike
+                    latency_hist.append(latency)
+                    hbmacc_hist.append(hbmAcc)
                 
-                conv1_out_idx = [int(idx) for idx in conv1_out]
+                conv1_out_idx = []
+                for idx in conv1_out:
+                    if int(idx)-neuron_offset < np.prod(CONV1_OUTPUT_SHAPE) and int(idx)-neuron_offset >= 0:
+                        conv1_out_idx.append(int(idx)-neuron_offset)
                 outputs = np.zeros(CONV1_OUTPUT_SHAPE).flatten()
                 outputs[conv1_out_idx] = 1
                 neuron_offset += np.prod(CONV1_OUTPUT_SHAPE)
@@ -168,13 +181,22 @@ def main():
                 curr_input = ['a' + str(idx + axon_offset) for idx in curr_input]
                 axon_offset += np.prod(CONV2_OUTPUT_SHAPE)
                 conv2_out, latency, hbmAcc = net_cri.step(curr_input)
+                latency_hist.append(latency)
+                hbmacc_hist.append(hbmAcc)
                 hwSpike, latency, hbmAcc = net_cri.step([])
+                latency_hist.append(latency)
+                hbmacc_hist.append(hbmAcc)
                 conv2_out = conv2_out + hwSpike
                 if t == args.T - 1:
                     hwSpike, latency, hbmAcc = net_cri.step([])
+                    latency_hist.append(latency)
+                    hbmacc_hist.append(hbmAcc)
                     conv2_out = conv2_out + hwSpike
                 
-                conv2_out_idx = [int(idx)-neuron_offset for idx in conv2_out]
+                conv2_out_idx = []
+                for idx in conv2_out: 
+                    if int(idx)-neuron_offset < np.prod(CONV2_OUTPUT_SHAPE) and int(idx)-neuron_offset >= 0:
+                        conv2_out_idx.append(int(idx)-neuron_offset )
                 neuron_offset += np.prod(CONV2_OUTPUT_SHAPE)
                 outputs = np.zeros(CONV2_OUTPUT_SHAPE).flatten()
                 outputs[conv2_out_idx] = 1
@@ -190,19 +212,30 @@ def main():
                 bias_input = ['a' + str(idx) for idx in range(axon_offset, len(cn.axon_dict))]  
                 
                 linear_out, latency, hbmAcc = net_cri.step(curr_input+bias_input)
+                latency_hist.append(latency)
+                hbmacc_hist.append(hbmAcc)
                 hwSpike, latency, hbmAcc = net_cri.step([])
+                latency_hist.append(latency)
+                hbmacc_hist.append(hbmAcc)
                 linear_out = linear_out + hwSpike
                 if t == args.T - 1:
                     hwSpike, latency, hbmAcc = net_cri.step([])
                     linear_out = linear_out + hwSpike
+                    latency_hist.append(latency)
+                    hbmacc_hist.append(hbmAcc)
                 
                 neuron_offset += np.prod(L1_OUTPUT_SHAPE)
-                linear_out_idx = [int(idx)-neuron_offset for idx in linear_out]
+                linear_out_idx = []
+                for idx in linear_out:
+                    if int(idx)-neuron_offset < 10 and int(idx)-neuron_offset >= 0:
+                        linear_out_idx.append(int(idx)-neuron_offset)
                 outputs = np.zeros(OUTPUT_SHAPE)
                 outputs[linear_out_idx] = 1
                 
+                # Add spikes from each step
                 spike_rate += outputs
             
+            # Stack all the img from a batch
             cri_output.append(torch.tensor(spike_rate))
         
         cri_output = torch.stack(cri_output).to(device)
@@ -211,16 +244,28 @@ def main():
         loss = loss_fun(out_fr, label_onehot)
         test_samples += label.numel()
         test_loss += loss.item() * label.numel()
-            
-        test_acc += (out_fr.argmax(1) == label).float().sum().item()    
+        test_acc += (out_fr.argmax(1) == label).float().sum().item()   
         
-        test_time = time.time()
-        test_speed = test_samples / (test_time - start_time)
-        test_loss /= test_samples
-        test_acc /= test_samples
+        with open(f'history/B_{b_idx}_latency_hist.pkl', 'wb') as f:
+            pickle.dump(latency_hist, f) 
+        with open(f'history/B_{b_idx}_hbmacc_hist.pkl', 'wb') as f:
+            pickle.dump(hbmacc_hist, f) 
+        with open(f'history/accuracy.pkl', 'wb') as f:
+            pickle.dump(test_acc/test_samples, f) 
         
-        print(f'test_loss ={test_loss: .4f}, test_acc ={test_acc: .4f}')
-        print(f'test speed ={test_speed: .4f} images/s')
+    test_time = time.time()
+    test_speed = test_samples / (test_time - start_time)
+    test_loss /= test_samples
+    test_acc /= test_samples
+    
+    print(f'test_loss ={test_loss: .4f}, test_acc ={test_acc: .4f}')
+    print(f'test speed ={test_speed: .4f} images/s')
+    with open(f'history/accuracy.pkl', 'wb') as f:
+        pickle.dump(test_acc, f) 
+    with open(f'history/loss.pkl', 'wb') as f:
+        pickle.dump(test_loss, f) 
+    
+    
             
             
             
