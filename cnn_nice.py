@@ -18,7 +18,7 @@ import hs_bridge
 parser = argparse.ArgumentParser()
 parser.add_argument('-resume_path', default='', type=str, help='checkpoint file')
 parser.add_argument('-load_path', default='', type=str, help='checkpoint loading path')
-parser.add_argument('-b', default=1, type=int, help='batch size')
+parser.add_argument('-b', default=32, type=int, help='batch size')
 parser.add_argument('-data-dir', default='/Volumes/export/isn/keli/code/data/NMNIST', type=str, help='path to dataset')
 parser.add_argument('-out-dir', default='/Volumes/export/isn/keli/code/HS/CRI_Mapping/runs/nmnist', type=str, help='dir path that stores the trained model checkpoint')
 parser.add_argument('-T', default=16, type=int)
@@ -246,11 +246,11 @@ def main():
         test_loss += loss.item() * label.numel()
         test_acc += (out_fr.argmax(1) == label).float().sum().item()   
         
-        with open(f'history/B_{b_idx}_latency_hist.pkl', 'wb') as f:
+        with open(f'history/C_{args.channels}_B_{b_idx}_latency_hist.pkl', 'wb') as f:
             pickle.dump(latency_hist, f) 
-        with open(f'history/B_{b_idx}_hbmacc_hist.pkl', 'wb') as f:
+        with open(f'history/C_{args.channels}_B_{b_idx}_hbmacc_hist.pkl', 'wb') as f:
             pickle.dump(hbmacc_hist, f) 
-        with open(f'history/accuracy.pkl', 'wb') as f:
+        with open(f'history/C_{args.channels}_accuracy.pkl', 'wb') as f:
             pickle.dump(test_acc/test_samples, f) 
         
     test_time = time.time()
@@ -260,9 +260,9 @@ def main():
     
     print(f'test_loss ={test_loss: .4f}, test_acc ={test_acc: .4f}')
     print(f'test speed ={test_speed: .4f} images/s')
-    with open(f'history/accuracy.pkl', 'wb') as f:
+    with open(f'history/C_{args.channels}_accuracy.pkl', 'wb') as f:
         pickle.dump(test_acc, f) 
-    with open(f'history/loss.pkl', 'wb') as f:
+    with open(f'history/C_{args.channels}_loss.pkl', 'wb') as f:
         pickle.dump(test_loss, f) 
     
     
