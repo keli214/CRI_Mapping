@@ -19,7 +19,7 @@ parser.add_argument('-epochs', default=5, type=int)
 parser.add_argument('-lr', default=1e-3, type=float)
 parser.add_argument('-momentum', default=0.9, type=float, help='momentum for SGD')
 parser.add_argument('-T', default=4, type=int)
-parser.add_argument('-features', default=1000, type=int)
+parser.add_argument('-channels', default=1000, type=int)
 parser.add_argument('-writer', action='store_true', default=False, help='Use torch summary')
 parser.add_argument('-encoder',action='store_true',default=True, help='Using spike rate encoder to process the input')
 parser.add_argument('-amp', action='store_true', default=False, help='Use mixed percision training')
@@ -66,7 +66,7 @@ def main():
     )
     
     # Initialize SnnTorch/SpikingJelly model
-    net = Mnist(features=args.features, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
+    net = Mnist(features=args.channels, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
     
     net.to(device)
     
