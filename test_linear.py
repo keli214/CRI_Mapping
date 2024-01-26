@@ -8,6 +8,7 @@ from utils import train, validate
 from hs_api.converter import CRI_Converter, Quantize_Network, BN_Folder
 from hs_api.api import CRI_network
 from models import Mnist
+
 parser = argparse.ArgumentParser()
 parser.add_argument('-resume_path', default='', type=str, help='checkpoint file')
 parser.add_argument('-train', action='store_true', default=False, help='Train the network from stratch')
@@ -23,6 +24,7 @@ parser.add_argument('-writer', action='store_true', default=False, help='Use tor
 parser.add_argument('-encoder',action='store_true',default=True, help='Using spike rate encoder to process the input')
 parser.add_argument('-amp', action='store_true', default=False, help='Use mixed percision training')
 parser.add_argument('-opt', default="adam", type=str, help='use which optimizer. SDG or Adam')
+parser.add_argument('-transformer', action='store_true', default=False, help='Training transformer model')
 parser.add_argument('-convert', action='store_true', default=True, help='Convert the network for CRI')
 parser.add_argument('-test', action='store_true', help='Test the PyTorch network')
 parser.add_argument('-dvs', action='store_true', default=False, help='Using the DVS datasets')
