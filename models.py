@@ -170,14 +170,14 @@ class FashionMnist(nn.Module):
         return x
     
 class Mnist(nn.Module):
-    def __init__(self, features = 1000):
+    def __init__(self, features = 1000, spiking_neuron: callable = None, **kwargs):
         super().__init__()
         self.layer = nn.Sequential(
             layer.Flatten(),
             layer.Linear(28 * 28, features, bias=False),
-            neuron.IFNode(surrogate_function=surrogate.ATan()),
+            spiking_neuron(**deepcopy(kwargs)),
             layer.Linear(features, 10, bias=False),
-            neuron.IFNode(surrogate_function=surrogate.ATan()),
+            spiking_neuron(**deepcopy(kwargs)),
             )
         
     def forward(self, x):
@@ -417,7 +417,6 @@ class NMNISTNet(nn.Module):
             layer.Linear(2048, 10),
             spiking_neuron(**deepcopy(kwargs))
         )
-
 
     def forward(self, x: torch.Tensor):
         return self.conv_fc(x)

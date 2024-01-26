@@ -13,7 +13,7 @@ parser.add_argument('-resume_path', default='', type=str, help='checkpoint file'
 parser.add_argument('-train', action='store_true', default=False, help='Train the network from stratch')
 parser.add_argument('-b', default=32, type=int, help='batch size')
 parser.add_argument('-data-dir', default='/Volumes/export/isn/keli/code/data', type=str, help='path to dataset')
-parser.add_argument('-out-dir', default='/Volumes/export/isn/keli/code/HS/CRI_Mapping/runs/cnn', type=str, help='dir path that stores the trained model checkpoint')
+parser.add_argument('-out-dir', default='/Volumes/export/isn/keli/code/HS/CRI_Mapping/runs/mnist', type=str, help='dir path that stores the trained model checkpoint')
 parser.add_argument('-epochs', default=5, type=int)
 parser.add_argument('-lr', default=1e-3, type=float)
 parser.add_argument('-momentum', default=0.9, type=float, help='momentum for SGD')
