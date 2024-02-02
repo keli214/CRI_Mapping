@@ -421,6 +421,31 @@ class NMNISTNet(nn.Module):
     def forward(self, x: torch.Tensor):
         return self.conv_fc(x)
     
+class NMNIST_CNN(nn.Module):
+    def __init__(self, channels=128, spiking_neuron: callable = None, **kwargs):
+        super().__init__()
+
+        self.conv_fc = nn.Sequential(
+            layer.Conv2d(2, channels, kernel_size=3, stride = 2, padding=0, bias=False), 
+            layer.BatchNorm2d(channels), 
+            spiking_neuron(**deepcopy(kwargs)),
+
+            layer.Conv2d(channels, channels, kernel_size=3, stride = 2, padding=0, bias=False),
+            layer.BatchNorm2d(channels),
+            spiking_neuron(**deepcopy(kwargs)),
+
+            layer.Flatten(),
+            layer.Dropout(0.5),
+            layer.Linear(channels * 8 * 8, 2048),
+            spiking_neuron(**deepcopy(kwargs)),
+            layer.Dropout(0.5),
+            layer.Linear(2048, 10),
+            spiking_neuron(**deepcopy(kwargs))
+        )
+
+    def forward(self, x: torch.Tensor):
+        return self.conv_fc(x)
+    
 class QuantMnist(nn.Module):
     def __init__(self, features = 1000):
         super().__init__()
