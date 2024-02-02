@@ -18,12 +18,12 @@ parser.add_argument('-load_path', default='', type=str, help='checkpoint loading
 parser.add_argument('-load_ssa_path', default='', type=str, help='ssa checkpoint loading path')
 parser.add_argument('-train', action='store_true', default=False, help='Train the network from stratch')
 parser.add_argument('-b', default=32, type=int, help='batch size')
-parser.add_argument('-data-dir', default='/Volumes/export/isn/keli/code/data/nmnist', type=str, help='path to dataset')
+parser.add_argument('-data-dir', default='/Volumes/export/isn/keli/code/data/NMNIST', type=str, help='path to dataset')
 parser.add_argument('-out-dir', default='/Volumes/export/isn/keli/code/HS/CRI_Mapping/runs/nmnist', type=str, help='dir path that stores the trained model checkpoint')
 parser.add_argument('-epochs', default=10, type=int)
 parser.add_argument('-lr', default=1e-3, type=float)
 parser.add_argument('-momentum', default=0.9, type=float, help='momentum for SGD')
-parser.add_argument('-T', default=4, type=int)
+parser.add_argument('-T', default=16, type=int)
 parser.add_argument('-channels', default=60, type=int)
 parser.add_argument('-writer', action='store_true', default=False, help='Use torch summary')
 parser.add_argument('-encoder',action='store_true',default=True, help='Using spike rate encoder to process the input')
@@ -45,10 +45,10 @@ parser.add_argument('-hardware',action='store_true', default=False, help='Run th
 def main():
     
     # Train
-    # python test_cnn.py -data-dir /Users/keli/Desktop/CRI/data -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/runs/cnn
+    # python cnn_nice_train.py -data-dir /Users/keli/Code/CRI/data/NMNIST -out-dir /Users/keli/Code/CRI/CRI_Mapping/runs/nmnist
     
     # Verify on Hardware
-    # python test_cnn.py -data-dir /Users/keli/Desktop/CRI/data -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/runs/cnn -resume_path runs/cnn/checkpoint_max_T_4_lr_0.001.pth -hardware
+    # python cnn_nice_train.py -data-dir /Users/keli/Code/CRI/data/NMNIST -out-dir /Users/keli/Code/CRI/CRI_Mapping/runs/nmnist -resume_path runs/nmnist/checkpoint_max_T_4_lr_0.001.pth -hardware
     args = parser.parse_args()
     print(args)
 

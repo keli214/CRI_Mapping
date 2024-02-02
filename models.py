@@ -422,33 +422,30 @@ class NMNISTNet(nn.Module):
 class NMNIST_CNN(nn.Module):
     def __init__(self, channels=128, spiking_neuron: callable = None, **kwargs):
         super().__init__()
-
-        
-        self.conv1 = layer.Conv2d(2, channels, kernel_size=3, stride = 2, padding=0, bias=False)
-        self.bn1 = layer.BatchNorm2d(channels)
+        self.conv1 = nn.Conv2d(2, channels, kernel_size=3, stride = 2, padding=0, bias=False)
+        self.bn1 = nn.BatchNorm2d(channels)
         self.lif1 = spiking_neuron(**deepcopy(kwargs))
 
-        self.conv2 = layer.Conv2d(channels, channels, kernel_size=3, stride = 2, padding=0, bias=False)
-        self.bn2 = layer.BatchNorm2d(channels)
+        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, stride = 2, padding=0, bias=False)
+        self.bn2 = nn.BatchNorm2d(channels)
         self.lif2 = spiking_neuron(**deepcopy(kwargs))
 
-        self.flat = layer.Flatten()
-        self.drop1 = layer.Dropout(0.5)
-        self.linear1 = layer.Linear(channels * 8 * 8, 2048)
+        self.flat = nn.Flatten()
+        self.drop1 = nn.Dropout(0.5)
+        self.linear1 = nn.Linear(channels * 7 * 7, 2048)
         self.lif3 = spiking_neuron(**deepcopy(kwargs))
-        self.drop2 = layer.Dropout(0.5)
-        self.linear2 = layer.Linear(2048, 10)
+        self.drop2 = nn.Dropout(0.5)
+        self.linear2 = nn.Linear(2048, 10)
         self.lif4 = spiking_neuron(**deepcopy(kwargs))
 
     def forward(self, x: torch.Tensor):
-        # return self.conv_fc(x)
+        
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.lif1(x)
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.lif1(x)
-        breakpoint()
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = self.lif2(x)
         x = self.flat(x)
         x = self.drop1(x)
         x = self.linear1(x)
@@ -456,6 +453,7 @@ class NMNIST_CNN(nn.Module):
         x = self.drop2(x)
         x = self.linear2(x)
         x = self.lif4(x) 
+        return x
     
 class QuantMnist(nn.Module):
     def __init__(self, features = 1000):
