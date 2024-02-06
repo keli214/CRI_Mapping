@@ -492,11 +492,11 @@ class QuantCSNN(nn.Module):
         return fr
 
 class DVSGestureNet(nn.Module):
-    def __init__(self, channels=128, spiking_neuron: callable = None, **kwargs):
+    def __init__(self, channels=128, encoder = 3, spiking_neuron: callable = None, **kwargs):
         super().__init__()
 
         conv = []
-        for i in range(5):
+        for i in range(encoder):
             if conv.__len__() == 0:
                 in_channels = 2
             else:
@@ -508,18 +508,18 @@ class DVSGestureNet(nn.Module):
 
         self.conv_fc = nn.Sequential(
             *conv,
-
+            
             layer.Flatten(),
             layer.Dropout(0.5),
             layer.Linear(channels * 4 * 4, 512),
             spiking_neuron(**deepcopy(kwargs)),
 
             layer.Dropout(0.5),
-            layer.Linear(512, 110),
+            layer.Linear(512, 11),
             spiking_neuron(**deepcopy(kwargs)),
 
-            layer.VotingLayer(10)
         )
 
     def forward(self, x: torch.Tensor):
         return self.conv_fc(x)
+    
