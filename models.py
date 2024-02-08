@@ -511,7 +511,7 @@ class DVSGestureNet(nn.Module):
             
             layer.Flatten(),
             layer.Dropout(0.5),
-            layer.Linear(channels * 4 * 4, 512),
+            layer.Linear(channels * 15 * 15, 512),
             spiking_neuron(**deepcopy(kwargs)),
 
             layer.Dropout(0.5),
@@ -523,3 +523,43 @@ class DVSGestureNet(nn.Module):
     def forward(self, x: torch.Tensor):
         return self.conv_fc(x)
     
+class DVS_IBM(nn.Module):
+    def __init__(self, spiking_neuron: callable = None, **kwargs) -> None:
+        super().__init__()
+        self.conv0 = layer.Conv2d(in_channels=2, out_channels=6, kernel_size=3, stride=2, groups=1, bias=False)
+        self.conv1 = layer.Conv2d(in_channels=6, out_channels=12, kernel_size=3, stride=2, groups=2, bias=False)
+        self.conv2 = layer.Conv2d(in_channels=12, out_channels=252, kernel_size=4, stride=2, groups=2, bias=False)
+        self.conv3 = layer.Conv2d(in_channels=252, out_channels=256, kernel_size=1, stride=1, groups=2, bias=False)
+        self.conv4 = layer.Conv2d(in_channels=256, out_channels=512, kernel_size=2, stride=2, groups=2, bias=False)
+        self.conv5 = layer.Conv2d(in_channels=512, out_channels=512, kernel_size=3, stride=1, padding=1, groups=32, bias=False)
+        self.conv6 = layer.Conv2d(in_channels=512, out_channels=512, kernel_size=1, stride=1, groups=4, bias=False)
+        self.conv7 = layer.Conv2d(in_channels=512, out_channels=512, kernel_size=1, stride=1, groups=4, bias=False)
+        self.conv8 = layer.Conv2d(in_channels=512, out_channels=512, kernel_size=1, stride=1, groups=4, bias=False)
+        self.conv9 = layer.Conv2d(in_channels=512, out_channels=512, kernel_size=2, stride=2, groups=16, bias=False)
+        self.conv10 = layer.Conv2d(in_channels=512, out_channels=1024, kernel_size=3, stride=1, padding=1, groups=64, bias=False)
+        self.conv11 = layer.Conv2d(in_channels=1024, out_channels=1024, kernel_size=1, stride=1, groups=8, bias=False)
+        self.conv12 = layer.Conv2d(in_channels=1024, out_channels=1024, kernel_size=1, stride=1, groups=8, bias=False)
+        self.conv13 = layer.Conv2d(in_channels=1024, out_channels=1024, kernel_size=2, stride=2, groups=32, bias=False)
+        self.flat = layer.Flatten()
+        self.linear = layer.Linear(in_features=1024, out_features=11)
+        
+    def forward(self, x):
+        breakpoint()
+        x = self.conv0(x)
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+        x = self.conv5(x)
+        x = self.conv6(x)
+        x = self.conv7(x)
+        x = self.conv8(x)
+        x = self.conv9(x)
+        x = self.conv10(x)
+        x = self.conv11(x)
+        x = self.conv12(x)
+        x = self.conv13(x)
+        x = self.flat(x)
+        x = self.linear(x)
+        return x
+        

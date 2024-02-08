@@ -5,7 +5,7 @@ from torch.cuda import amp
 from spikingjelly.datasets.n_mnist import NMNIST
 from spikingjelly.datasets.dvs128_gesture import DVS128Gesture
 from spikingjelly.activation_based import surrogate, neuron, functional
-from models import NMNISTNet, NMNIST_CNN, DVSGestureNet
+from models import DVSGestureNet, DVS_IBM
 from utils import train_DVS
 
 parser = argparse.ArgumentParser()
@@ -14,8 +14,8 @@ parser.add_argument('-load_path', default='', type=str, help='checkpoint loading
 parser.add_argument('-load_ssa_path', default='', type=str, help='ssa checkpoint loading path')
 parser.add_argument('-train', action='store_true', default=False, help='Train the network from stratch')
 parser.add_argument('-b', default=32, type=int, help='batch size')
-parser.add_argument('-data-dir', default='/Volumes/export/isn/keli/code/data/', type=str, help='path to dataset')
-parser.add_argument('-out-dir', default='/Volumes/export/isn/keli/code/HS/CRI_Mapping/runs/nmnist', type=str, help='dir path that stores the trained model checkpoint')
+parser.add_argument('-data-dir', default='/Volumes/export/isn/keli/code/data/DVS128Gesture', type=str, help='path to dataset')
+parser.add_argument('-out-dir', default='/Volumes/export/isn/keli/code/HS/CRI_Mapping/runs/dvs_gesture', type=str, help='dir path that stores the trained model checkpoint')
 parser.add_argument('-epochs', default=20, type=int)
 parser.add_argument('-lr', default=1e-3, type=float)
 parser.add_argument('-momentum', default=0.9, type=float, help='momentum for SGD')
@@ -34,10 +34,8 @@ parser.add_argument('-dvs', action='store_true', default=True, help='Using the D
 def main():
     
     # Train
-    # python cnn_nice_train.py -data-dir /Users/keli/Code/CRI/data/NMNIST -out-dir /Users/keli/Code/CRI/CRI_Mapping/runs/nmnist
+    # python cnn_train.py -data-dir /Users/keli/Code/CRI/data/DVS128Gesture -out-dir /Users/keli/Code/CRI/CRI_Mapping/runs/dvs_gesture
     
-    # Verify on Hardware
-    # python cnn_nice_train.py -data-dir /Users/keli/Code/CRI/data/NMNIST -out-dir /Users/keli/Code/CRI/CRI_Mapping/runs/nmnist -resume_path runs/nmnist/checkpoint_max_T_4_lr_0.001.pth -hardware
     args = parser.parse_args()
     print(args)
 
@@ -66,11 +64,11 @@ def main():
     )
     
     # Initialize SnnTorch/SpikingJelly model
-    net = DVSGestureNet(channels=args.channels, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
+    net = DVS_IBM(spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
     
     net.to(device)
     
-    functional.set_step_mode(net, 'm')
+    # functional.set_step_mode(net, 'm')
     
     functional.set_backend(net, 'cupy', instance=neuron.LIFNode)
     
