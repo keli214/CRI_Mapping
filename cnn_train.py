@@ -2,10 +2,9 @@ import argparse
 import torch
 from torch.utils.data import DataLoader
 from torch.cuda import amp
-from spikingjelly.datasets.n_mnist import NMNIST
 from spikingjelly.datasets.dvs128_gesture import DVS128Gesture
-from spikingjelly.activation_based import surrogate, neuron, functional
-from models import DVSGestureNet, DVS_IBM
+from spikingjelly.activation_based import surrogate, neuron
+from models import DVSGestureNet
 from utils import train_DVS
 
 parser = argparse.ArgumentParser()
@@ -47,10 +46,6 @@ def main():
         scaler = amp.GradScaler()
         
     #Prepare the dataset
-    # NMNIST
-    # train_set = NMNIST(root=args.data_dir, train=True, data_type='frame', frames_number=args.T, split_by='number')
-    # test_set = NMNIST(root=args.data_dir, train=False, data_type='frame', frames_number=args.T, split_by='number')
-    
     # DVS128
     train_set = DVS128Gesture(root=args.data_dir, train=True, data_type='frame', frames_number=args.T, split_by='number')
     test_set = DVS128Gesture(root=args.data_dir, train=False, data_type='frame', frames_number=args.T, split_by='number')
@@ -64,13 +59,9 @@ def main():
     )
     
     # Initialize SnnTorch/SpikingJelly model
-    net = DVS_IBM(spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
+    net = DVSGestureNet(channels=20, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
     
     net.to(device)
-    
-    # functional.set_step_mode(net, 'm')
-    
-    functional.set_backend(net, 'cupy', instance=neuron.LIFNode)
     
     n_parameters = sum(p.numel() for p in net.parameters() if p.requires_grad)
     print(f"number of params: {n_parameters}")

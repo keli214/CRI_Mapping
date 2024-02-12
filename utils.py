@@ -230,7 +230,7 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
     loss_fun = nn.MSELoss()
     #loss_fun = nn.CrossEntropyLoss()
     
-    encoder, writer = None, None
+    encoder = None
     
     encoder = encoding.PoissonEncoder()
             
@@ -255,14 +255,13 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
             label_onehot = F.one_hot(label, 11).float()
             out_fr = 0.
             
-        
             with amp.autocast():
                 img = img.transpose(0, 1) 
                 for t in range(args.T):
                     encoded_img = encoder(img[t])
                     out_fr += net(encoded_img)
                         
-            out_fr = out_fr/args.T   
+            out_fr = out_fr/args.T
             loss = loss_fun(out_fr, label_onehot)
             
             scaler.scale(loss).backward()
@@ -298,9 +297,8 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
                 for t in range(args.T):
                     encoded_img = encoder(img[t])
                     out_fr += net(encoded_img)
-                    
-                out_fr = out_fr/args.T 
-                    
+                
+                out_fr = out_fr/args.T
                 loss = loss_fun(out_fr, label_onehot)
 
                 test_samples += label.numel()
