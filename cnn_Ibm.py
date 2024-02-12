@@ -2,11 +2,10 @@ import argparse
 import torch
 from torch.utils.data import DataLoader
 from torch.cuda import amp
-from spikingjelly.datasets.n_mnist import NMNIST
 from spikingjelly.datasets.dvs128_gesture import DVS128Gesture
 from spikingjelly.activation_based import surrogate, neuron, functional
-from models import DVSGestureNet, DVS_IBM
-from utils import train_DVS
+from models import DVS_IBM
+from utils import train_DVS_IBM
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-resume_path', default='', type=str, help='checkpoint file')
@@ -65,7 +64,7 @@ def main():
     
     # Initialize SnnTorch/SpikingJelly model
     net = DVS_IBM(spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
-    net = DVSGestureNet(channels=20, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
+
     net.to(device)
     
     functional.set_step_mode(net, 'm')
@@ -76,7 +75,7 @@ def main():
     print(f"number of params: {n_parameters}")
     
     print('Start Training')
-    train_DVS(args, net, train_loader, test_loader, device, scaler)
+    train_DVS_IBM(args, net, train_loader, test_loader, device, scaler)
         
         
 if __name__ == '__main__':

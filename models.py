@@ -662,7 +662,7 @@ class DVS_IBM(nn.Module):
         x = self.lif14(x)
         return x
     
-class IBM_DVS_net(nn.modules):
+class IBM_DVS_net(nn.Module):
     def __init__(self, spiking_neuron: callable = None, **kwargs) -> None:
         super().__init__()
         self.conv0 = layer.Conv2d(in_channels=2, out_channels=6, kernel_size=3, stride=2, groups=1, bias=False)
