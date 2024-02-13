@@ -7,4 +7,5 @@ fig/
 **/output/
 **/build
 **/**deb
+**/log**
 converted_model/
