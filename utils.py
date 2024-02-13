@@ -253,18 +253,18 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
         for img, label in train_loader:
             optimizer.zero_grad()
             img = img.to(device)
+            img = img.transpose(0, 1) 
             label = label.to(device)
             label_onehot = F.one_hot(label, 11).float()
             out_fr = 0.
             
             with amp.autocast():
-                img = img.transpose(0, 1) 
                 for t in range(args.T):
                     encoded_img = encoder(img[t])
                     out_fr += net(encoded_img)
                         
-            out_fr = out_fr.mean(0)
-            loss = loss_fun(out_fr, label_onehot)
+                out_fr = out_fr/args.T
+                loss = loss_fun(out_fr, label_onehot)
             
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -294,16 +294,16 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
         with torch.no_grad():
             for img, label in test_loader:
                 img = img.to(device)
+                img = img.transpose(0, 1) 
                 label = label.to(device)
                 label_onehot = F.one_hot(label, 11).float()
                 out_fr = 0.
         
-                img = img.transpose(0, 1) 
                 for t in range(args.T):
                     encoded_img = encoder(img[t])
                     out_fr += net(encoded_img)
-                
-                out_fr = out_fr.mean(0)
+    
+                out_fr = out_fr/args.T
                 loss = loss_fun(out_fr, label_onehot)
 
                 test_samples += label.numel()
@@ -343,7 +343,7 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
 
 """ Same function as the train but no encoder and use multistep mode from spikingjelly 
 """
-def train_DVS_IBM(args, net, train_loader, test_loader, device, scaler): 
+def train_DVS_Mul(args, net, train_loader, test_loader, device, scaler): 
     start_epoch = 0
     max_test_acc = -1
     
@@ -372,16 +372,14 @@ def train_DVS_IBM(args, net, train_loader, test_loader, device, scaler):
         for img, label in train_loader:
             optimizer.zero_grad()
             img = img.to(device)
+            img = img.transpose(0, 1) 
             label = label.to(device)
             label_onehot = F.one_hot(label, 11).float()
             out_fr = 0.
             
             with amp.autocast():
-                img = img.transpose(0, 1) 
-                out_fr += net(img)
-                        
-            out_fr = out_fr.mean(0)
-            loss = loss_fun(out_fr, label_onehot)
+                out_fr = net(img).mean(0)
+                loss = loss_fun(out_fr, label_onehot)
             
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -408,14 +406,11 @@ def train_DVS_IBM(args, net, train_loader, test_loader, device, scaler):
         with torch.no_grad():
             for img, label in test_loader:
                 img = img.to(device)
+                img = img.transpose(0, 1) 
                 label = label.to(device)
                 label_onehot = F.one_hot(label, 11).float()
-                out_fr = 0.
-        
-                img = img.transpose(0, 1) 
-                out_fr += net(img)
                 
-                out_fr = out_fr.mean(0)
+                out_fr = net(img).mean(0)
                 loss = loss_fun(out_fr, label_onehot)
 
                 test_samples += label.numel()

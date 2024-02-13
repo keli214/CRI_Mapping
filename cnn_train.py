@@ -3,9 +3,9 @@ import torch
 from torch.utils.data import DataLoader
 from torch.cuda import amp
 from spikingjelly.datasets.dvs128_gesture import DVS128Gesture
-from spikingjelly.activation_based import surrogate, neuron
+from spikingjelly.activation_based import surrogate, neuron, functional
 from models import DVSGestureNet
-from utils import train_DVS
+from utils import train_DVS, train_DVS_Mul
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-resume_path', default='', type=str, help='checkpoint file')
@@ -41,9 +41,7 @@ def main():
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     print(device)
     
-    scaler = None
-    if args.amp:
-        scaler = amp.GradScaler()
+    scaler = amp.GradScaler()
         
     #Prepare the dataset
     # DVS128
@@ -63,12 +61,14 @@ def main():
     
     net.to(device)
     
+    functional.set_step_mode(net, 'm')
+    
     n_parameters = sum(p.numel() for p in net.parameters() if p.requires_grad)
     print(f"number of params: {n_parameters}")
     
     print('Start Training')
-    train_DVS(args, net, train_loader, test_loader, device, scaler)
-        
+    # train_DVS(args, net, train_loader, test_loader, device, scaler)
+    train_DVS_Mul(args, net, train_loader, test_loader, device, scaler)    
         
 if __name__ == '__main__':
     main()
