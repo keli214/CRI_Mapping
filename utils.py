@@ -232,7 +232,7 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
     
     encoder = encoding.PoissonEncoder()
     
-    writer = SummaryWriter(log_dir='./log_cnn')
+    writer = SummaryWriter()
             
     if args.resume_path != "":
         checkpoint = torch.load(args.resume_path, map_location=device)
@@ -279,8 +279,8 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
         train_loss /= train_samples
         train_acc /= train_samples
         
-        writer.add_scalar('train_loss', train_loss, epoch)
-        writer.add_scalar('train_acc', train_acc, epoch)
+        writer.add_scalar('train_loss', train_loss[epoch], epoch)
+        writer.add_scalar('train_acc', train_acc[epoch], epoch)
         
         lr_scheduler.step()
 
@@ -314,8 +314,8 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
             test_loss /= test_samples
             test_acc /= test_samples
             
-            writer.add_scalar('test_loss', test_loss, epoch)
-            writer.add_scalar('test_acc', test_acc, epoch)
+            writer.add_scalar('test_loss', test_loss[epoch], epoch)
+            writer.add_scalar('test_acc', test_acc[epoch], epoch)
             
         save_max = False
         if test_acc > max_test_acc:

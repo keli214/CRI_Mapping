@@ -59,7 +59,7 @@ def main():
     )
     
     # Initialize SnnTorch/SpikingJelly model
-    net = DVSGestureNet(channels=20, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
+    net = DVSGestureNet(channels=20, spiking_neuron=neuron.IFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
     
     net.to(device)
     
