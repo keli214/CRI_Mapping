@@ -232,8 +232,10 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
     
     encoder = encoding.PoissonEncoder()
     
-    writer = SummaryWriter()
-            
+    # using two writers to overlay the plot
+    writer_train = SummaryWriter(os.path.join('log_cnn', 'train'))
+    writer_test = SummaryWriter(os.path.join('log_cnn', 'test'))
+    
     if args.resume_path != "":
         checkpoint = torch.load(args.resume_path, map_location=device)
         net.load_state_dict(checkpoint['net'])
@@ -261,7 +263,7 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
                     encoded_img = encoder(img[t])
                     out_fr += net(encoded_img)
                         
-            out_fr = out_fr/args.T
+            out_fr = out_fr.mean(0)
             loss = loss_fun(out_fr, label_onehot)
             
             scaler.scale(loss).backward()
@@ -279,8 +281,8 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
         train_loss /= train_samples
         train_acc /= train_samples
         
-        writer.add_scalar('train_loss', train_loss[epoch], epoch)
-        writer.add_scalar('train_acc', train_acc[epoch], epoch)
+        writer_train.add_scalar('train_loss', train_loss, epoch)
+        writer_train.add_scalar('train_acc', train_acc, epoch)
         
         lr_scheduler.step()
 
@@ -301,7 +303,7 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
                     encoded_img = encoder(img[t])
                     out_fr += net(encoded_img)
                 
-                out_fr = out_fr/args.T
+                out_fr = out_fr.mean(0)
                 loss = loss_fun(out_fr, label_onehot)
 
                 test_samples += label.numel()
@@ -314,8 +316,8 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
             test_loss /= test_samples
             test_acc /= test_samples
             
-            writer.add_scalar('test_loss', test_loss[epoch], epoch)
-            writer.add_scalar('test_acc', test_acc[epoch], epoch)
+            writer_test.add_scalar('test_loss', test_loss, epoch)
+            writer_test.add_scalar('test_acc', test_acc, epoch)
             
         save_max = False
         if test_acc > max_test_acc:

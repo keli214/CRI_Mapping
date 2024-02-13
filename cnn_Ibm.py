@@ -14,7 +14,7 @@ parser.add_argument('-load_ssa_path', default='', type=str, help='ssa checkpoint
 parser.add_argument('-train', action='store_true', default=False, help='Train the network from stratch')
 parser.add_argument('-b', default=32, type=int, help='batch size')
 parser.add_argument('-data-dir', default='/Volumes/export/isn/keli/code/data/DVS128Gesture', type=str, help='path to dataset')
-parser.add_argument('-out-dir', default='/Volumes/export/isn/keli/code/HS/CRI_Mapping/runs/dvs_gesture', type=str, help='dir path that stores the trained model checkpoint')
+parser.add_argument('-out-dir', default='/Volumes/export/isn/keli/code/HS/CRI_Mapping/output/dvs_gesture_ibm', type=str, help='dir path that stores the trained model checkpoint')
 parser.add_argument('-epochs', default=20, type=int)
 parser.add_argument('-lr', default=1e-3, type=float)
 parser.add_argument('-momentum', default=0.9, type=float, help='momentum for SGD')
