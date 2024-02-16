@@ -43,7 +43,7 @@ def train(args, net, train_loader, test_loader, device, scaler):
 
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
     loss_fun = nn.MSELoss()
-    #loss_fun = nn.CrossEntropyLoss()
+    # loss_fun = nn.CrossEntropyLoss()
     
     encoder, writer = None, None
     if args.encoder:
@@ -71,7 +71,7 @@ def train(args, net, train_loader, test_loader, device, scaler):
             optimizer.zero_grad()
             img = img.to(device)
             label = label.to(device)
-            label_onehot = F.one_hot(label, 11).float()
+            label_onehot = F.one_hot(label, 10).float()
             out_fr = 0.
             if args.encoder:
                 if args.amp:
@@ -194,9 +194,9 @@ def train(args, net, train_loader, test_loader, device, scaler):
                 writer.add_scalar('test_acc', test_acc, epoch)
 
         save_max = False
-        if test_acc > max_test_acc:
-            max_test_acc = test_acc
-            save_max = True
+        # if test_acc > max_test_acc:
+        #     max_test_acc = test_acc
+        #     save_max = True
 
         checkpoint = {
             'net': net.state_dict(),
@@ -212,7 +212,7 @@ def train(args, net, train_loader, test_loader, device, scaler):
                 checkpoint_ssa = {'ssa': net.block[0].attn.state_dict()}
                 torch.save(checkpoint_ssa, os.path.join(args.out_dir, f'checkpoint_max_ssa_T_{args.T}_C_{args.channels}_lr_{args.lr}.pth'))
 
-        torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_latest_T_{args.T}_C_{args.channels}_lr_{args.lr}.pth'))
+        # torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_latest_T_{args.T}_C_{args.channels}_lr_{args.lr}.pth'))
 
         print(f'epoch = {epoch}, train_loss ={train_loss: .4f}, train_acc ={train_acc: .4f}, test_loss ={test_loss: .4f}, test_acc ={test_acc: .4f}, max_test_acc ={max_test_acc: .4f}')
         print(f'train speed ={train_speed: .4f} images/s, test speed ={test_speed: .4f} images/s')
@@ -313,23 +313,23 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
             test_loss /= test_samples
             test_acc /= test_samples
             
-        save_max = False
-        if test_acc > max_test_acc:
-            max_test_acc = test_acc
-            save_max = True
+        # save_max = False
+        # if test_acc > max_test_acc:
+        #     max_test_acc = test_acc
+        #     save_max = True
 
-        checkpoint = {
-            'net': net.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'lr_scheduler': lr_scheduler.state_dict(),
-            'epoch': epoch,
-            'max_test_acc': max_test_acc
-        }
+        # checkpoint = {
+        #     'net': net.state_dict(),
+        #     'optimizer': optimizer.state_dict(),
+        #     'lr_scheduler': lr_scheduler.state_dict(),
+        #     'epoch': epoch,
+        #     'max_test_acc': max_test_acc
+        # }
 
-        if save_max:
-            torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_max_T_{args.T}_C_{args.channels}_lr_{args.lr}.pth'))
+        # if save_max:
+        #     torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_max_T_{args.T}_C_{args.channels}_lr_{args.lr}.pth'))
     
-        torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_latest_T_{args.T}_C_{args.channels}_lr_{args.lr}.pth'))
+        # torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_latest_T_{args.T}_C_{args.channels}_lr_{args.lr}.pth'))
 
         print(f'epoch = {epoch}, train_loss ={train_loss: .4f}, train_acc ={train_acc: .4f}, test_loss ={test_loss: .4f}, test_acc ={test_acc: .4f}, max_test_acc ={max_test_acc: .4f}')
         print(f'train speed ={train_speed: .4f} images/s, test speed ={test_speed: .4f} images/s')

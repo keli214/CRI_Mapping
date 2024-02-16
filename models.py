@@ -397,7 +397,7 @@ class NMNISTNet(nn.Module):
         super().__init__()
 
         self.conv_fc = nn.Sequential(
-            layer.Conv2d(2, channels, kernel_size=3, padding=1, bias=False), 
+            layer.Conv2d(1, channels, kernel_size=3, padding=1, bias=False), 
             layer.BatchNorm2d(channels), 
             spiking_neuron(**deepcopy(kwargs)),
             layer.MaxPool2d(2, 2),
@@ -422,17 +422,17 @@ class NMNISTNet(nn.Module):
 class NMNIST_CNN(nn.Module):
     def __init__(self, channels=128, spiking_neuron: callable = None, **kwargs):
         super().__init__()
-        self.conv1 = nn.Conv2d(2, channels, kernel_size=3, stride = 2, padding=0, bias=False)
+        self.conv1 = nn.Conv2d(1, channels, kernel_size=2, stride = 3, padding=2, bias=False)
         self.bn1 = nn.BatchNorm2d(channels)
         self.lif1 = spiking_neuron(**deepcopy(kwargs))
 
-        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, stride = 2, padding=0, bias=False)
+        self.conv2 = nn.Conv2d(channels, channels, kernel_size=4, stride = 2, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(channels)
         self.lif2 = spiking_neuron(**deepcopy(kwargs))
 
         self.flat = nn.Flatten()
         self.drop1 = nn.Dropout(0.5)
-        self.linear1 = nn.Linear(channels * 7 * 7, 2048)
+        self.linear1 = nn.Linear(channels * 6 * 6, 2048)
         self.lif3 = spiking_neuron(**deepcopy(kwargs))
         self.drop2 = nn.Dropout(0.5)
         self.linear2 = nn.Linear(2048, 10)

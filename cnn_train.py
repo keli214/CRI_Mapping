@@ -35,6 +35,7 @@ def main():
     
     # Train
     # python cnn_train.py -data-dir /Users/keli/Code/CRI/data/DVS128Gesture -out-dir /Users/keli/Code/CRI/CRI_Mapping/runs/dvs_gesture
+    # python cnn_train.py -data-dir D:/Data/DVS128Gesture -out-dir D://Data/CRI_Mapping/runs/dvs_gesture -epoch 5 -T 4 -lr 1e-2
     
     args = parser.parse_args()
     print(args)

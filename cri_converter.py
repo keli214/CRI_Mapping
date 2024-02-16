@@ -10,7 +10,7 @@ import time
 from tqdm import tqdm
 from collections import defaultdict
 from hs_api.api import CRI_network
-import hs_bridge
+# import hs_bridge
 import snntorch as snn
 import multiprocessing as mp
 import numpy as np
@@ -438,35 +438,41 @@ class CRI_Converter():
         
     def _conv_weight(self, input, output, layer):
         
-        h_k, w_k = layer.kernel_size
+        h_i, w_i = input.shape[-2], input.shape[-1]
         h_o, w_o = output.shape[-2],output.shape[-1]
-        pad_top, pad_left = h_k//2,w_k//2
+        h_k, w_k = layer.kernel_size
+        h_s, w_s = layer.stride
+        pad_top, pad_left = layer.padding
         filters = layer.weight.detach().cpu().numpy()
-        h_i, w_i = input.shape[-2], input.shape[-1] 
-        input_layer = input.reshape(input.shape[-2], input.shape[-1])
+
+        # input_layer = input.reshape(input.shape[-2], input.shape[-1])
         #TODO: add padding of 0s
-        print(f'Input.shape: {input_layer.shape}')
-        input_padded = np.pad(input_layer, 1, _pad_with, padder=-1)
-        input_padded = input_padded.reshape((input.shape[0], input_padded.shape[0], input_padded.shape[1]))
+        print(f'Input.shape: {input.shape}')
+        input_padded = np.pad(input, ((0, 0), layer.padding, layer.padding), _pad_with, padder=-1)
+        # input_padded = input_padded.reshape((input.shape[0], input_padded.shape[0], input_padded.shape[1]))
         print(f'input_padded: {input_padded.shape}')
         start_time = time.time()
         # for n in tqdm(range(input.shape[0])):
-        for c in tqdm(range(input.shape[0])):
-            for row in range(pad_top,h_i):
-                for col in range(pad_left,w_i):
+        for c in range(input.shape[0]):
+            for row in range(pad_top,h_i-h_k,h_s):
+                padded_row = row-pad_top
+                for col in range(pad_left,w_i-w_k,w_s):
                     #Input axons/neurons
-                    patch = input_padded[c,row-pad_top:row+pad_top+1,col-pad_left:col+pad_left+1]
-                    for fil_idx, fil in enumerate(filters):
-                        # print(fil.shape)
-                        post_syn = output[fil_idx,row-pad_top,col-pad_left]
+                    padded_col = col-pad_left
+                    patch = input_padded[c, padded_row:padded_row+h_k, padded_col:padded_col+w_k]
+                    for fil_idx, filter in enumerate(filters):
+                        # print(filter.shape)
+                        post_r_idx = (padded_row)//h_s
+                        post_c_idx = (padded_col)//w_s
+                        post_syn = output[fil_idx, post_r_idx, post_c_idx]
                         for i,neurons in enumerate(patch):
                             for j,neuron in enumerate(neurons):
                                 if self.layer_index == 0:
-                                    if fil[c,i,j] != 0 and neuron != -1:
-                                        self.axon_dict['a' + str(neuron)].append((str(post_syn),int(fil[c,i,j])))
+                                    if filter[c,i,j] != 0 and neuron != -1:
+                                        self.axon_dict['a' + str(neuron)].append((str(post_syn),int(filter[c,i,j])))
                                 else: 
-                                    if fil[c,i,j] != 0:
-                                        self.neuron_dict[str(neuron)].append((str(post_syn),int(fil[c,i,j])))
+                                    if filter[c,i,j] != 0:
+                                        self.neuron_dict[str(neuron)].append((str(post_syn),int(filter[c,i,j])))
         
         
                                     
@@ -585,40 +591,40 @@ class CRI_Converter():
         print("Max fan out of neuron: ", self.max_fan)
         
     
-    def run_CRI_hw(self,inputList,hardwareNetwork):
-        predictions = []
-        # each image
-        total_time_cri = 0
-        for currInput in inputList:
-            # initiate the hardware for each image
-            hs_bridge.FPGA_Execution.fpga_controller.clear(
-                len(self.output_neurons), False, 0
-            )  ##Num_neurons, simDump, coreOverride
-            spikeRate = [0] * len(self.output_neurons)
-            # each time step
-            for slice in currInput:
-                start_time = time.time()
-                hwSpike, latency, hbmAcc = hardwareNetwork.step(
-                    slice, membranePotential=False
-                )
-                end_time = time.time()
-                total_time_cri = total_time_cri + end_time - start_time
-                spikeIdx = [int(spike) - self.bias_start_idx for spike in hwSpike]
-                for idx in spikeIdx:
-                    spikeRate[idx] += 1
-            #Since CRI only get spikes after the time step it has occurred
-            if self.num_steps == 1:
-                hwSpike, _, _ = hardwareNetwork.step([], membranePotential=False)
-                spikeIdx = [int(spike) - self.bias_start_idx for spike in hwSpike]
-                for idx in spikeIdx:
-                    spikeRate[idx] += 1
-            #Empty input to flush out the spike
-            hwSpike, _, _ = hardwareNetwork.step([], membranePotential=False)
-            spikeIdx = [int(spike) - self.bias_start_idx for spike in hwSpike]
-            for idx in spikeIdx:
-                spikeRate[idx] += 1
-            predictions.append(spikeRate.index(max(spikeRate)))
-        return predictions
+    # def run_CRI_hw(self,inputList,hardwareNetwork):
+    #     predictions = []
+    #     # each image
+    #     total_time_cri = 0
+    #     for currInput in inputList:
+    #         # initiate the hardware for each image
+    #         hs_bridge.FPGA_Execution.fpga_controller.clear(
+    #             len(self.output_neurons), False, 0
+    #         )  ##Num_neurons, simDump, coreOverride
+    #         spikeRate = [0] * len(self.output_neurons)
+    #         # each time step
+    #         for slice in currInput:
+    #             start_time = time.time()
+    #             hwSpike, latency, hbmAcc = hardwareNetwork.step(
+    #                 slice, membranePotential=False
+    #             )
+    #             end_time = time.time()
+    #             total_time_cri = total_time_cri + end_time - start_time
+    #             spikeIdx = [int(spike) - self.bias_start_idx for spike in hwSpike]
+    #             for idx in spikeIdx:
+    #                 spikeRate[idx] += 1
+    #         #Since CRI only get spikes after the time step it has occurred
+    #         if self.num_steps == 1:
+    #             hwSpike, _, _ = hardwareNetwork.step([], membranePotential=False)
+    #             spikeIdx = [int(spike) - self.bias_start_idx for spike in hwSpike]
+    #             for idx in spikeIdx:
+    #                 spikeRate[idx] += 1
+    #         #Empty input to flush out the spike
+    #         hwSpike, _, _ = hardwareNetwork.step([], membranePotential=False)
+    #         spikeIdx = [int(spike) - self.bias_start_idx for spike in hwSpike]
+    #         for idx in spikeIdx:
+    #             spikeRate[idx] += 1
+    #         predictions.append(spikeRate.index(max(spikeRate)))
+    #     return predictions
     
     ''' Given a input list of spikes and a softwareNetwork
         The function calls the step function of HiAER-Spike network 
@@ -659,49 +665,49 @@ class CRI_Converter():
             predictions.append(spikeRate.index(max(spikeRate)))
         return predictions
     
-    def _run_CRI_hw_ssa_testing(self, inputList,hardwareNetwork):
-        output = []
-        for currInput in tqdm(inputList):
-            # initiate the hardware for each image
-            hs_bridge.FPGA_Execution.fpga_controller.clear(
-                len(self.mul_neuron), False, 0
-            )  ##Num_neurons, simDump, coreOverride
+    # def _run_CRI_hw_ssa_testing(self, inputList,hardwareNetwork):
+    #     output = []
+    #     for currInput in tqdm(inputList):
+    #         # initiate the hardware for each image
+    #         hs_bridge.FPGA_Execution.fpga_controller.clear(
+    #             len(self.mul_neuron), False, 0
+    #         )  ##Num_neurons, simDump, coreOverride
             
-            # Given the network is 5 layers, feed in the two inputs at different time steps          
-            spikeOut1, latency, hbmAcc = hardwareNetwork.step(currInput[0], membranePotential=False)
+    #         # Given the network is 5 layers, feed in the two inputs at different time steps          
+    #         spikeOut1, latency, hbmAcc = hardwareNetwork.step(currInput[0], membranePotential=False)
             
-            spikeOut2, _, _ = hardwareNetwork.step([], membranePotential=False)
+    #         spikeOut2, _, _ = hardwareNetwork.step([], membranePotential=False)
             
-            spikeOut3, _, _ = hardwareNetwork.step([], membranePotential=False)
+    #         spikeOut3, _, _ = hardwareNetwork.step([], membranePotential=False)
             
-            spikeOut = spikeOut1 + spikeOut2 + spikeOut3
-            spikeIn = []
-            for i in range(len(spikeOut)):
-                #Offset = Total # of neurons and axon in the first model
-                offset = self.embed_dim * self.embed_dim * 3 + self.embed_dim * self.embed_dim * self.embed_dim 
-                spikeIn.append('a'+str(int(spikeOut[i])-offset))
+    #         spikeOut = spikeOut1 + spikeOut2 + spikeOut3
+    #         spikeIn = []
+    #         for i in range(len(spikeOut)):
+    #             #Offset = Total # of neurons and axon in the first model
+    #             offset = self.embed_dim * self.embed_dim * 3 + self.embed_dim * self.embed_dim * self.embed_dim 
+    #             spikeIn.append('a'+str(int(spikeOut[i])-offset))
                 
-            for i in range(len(currInput[1])):
-                #Offset = N * N (starts from the second input)
-                offset = self.embed_dim * self.embed_dim
-                currInput[1][i] = 'a' + str(int(currInput[1][i][1:])-offset)
+    #         for i in range(len(currInput[1])):
+    #             #Offset = N * N (starts from the second input)
+    #             offset = self.embed_dim * self.embed_dim
+    #             currInput[1][i] = 'a' + str(int(currInput[1][i][1:])-offset)
             
-            hs_bridge.FPGA_Execution.fpga_controller.clear(
-                len(self.mul_neuron), False, 0
-            )  ##Num_neurons, simDump, coreOverride
+    #         hs_bridge.FPGA_Execution.fpga_controller.clear(
+    #             len(self.mul_neuron), False, 0
+    #         )  ##Num_neurons, simDump, coreOverride
             
-            hwSpike1, _, _ = hardwareNetwork.step(currInput[1]+spikeIn, membranePotential=False)
-            spikeIdx1 = [int(spike) - self.output_start_idx for spike in hwSpike1] 
+    #         hwSpike1, _, _ = hardwareNetwork.step(currInput[1]+spikeIn, membranePotential=False)
+    #         spikeIdx1 = [int(spike) - self.output_start_idx for spike in hwSpike1] 
             
-            hwSpike2 = hardwareNetwork.step([], membranePotential=False)
-            spikeIdx2 = [int(spike) - self.output_start_idx for spike in hwSpike2] 
+    #         hwSpike2 = hardwareNetwork.step([], membranePotential=False)
+    #         spikeIdx2 = [int(spike) - self.output_start_idx for spike in hwSpike2] 
             
-            hwSpike3 = hardwareNetwork.step([], membranePotential=False)
-            spikeIdx3 = [int(spike) - self.output_start_idx for spike in hwSpike3] 
+    #         hwSpike3 = hardwareNetwork.step([], membranePotential=False)
+    #         spikeIdx3 = [int(spike) - self.output_start_idx for spike in hwSpike3] 
             
-            output.append(spikeIdx1+ spikeIdx2 + spikeIdx3)    
+    #         output.append(spikeIdx1+ spikeIdx2 + spikeIdx3)    
             
-        return spikeOut, output 
+    #     return spikeOut, output 
     
     #Function used for SSA testing only 
     #Only process a batch of input for a single time step 

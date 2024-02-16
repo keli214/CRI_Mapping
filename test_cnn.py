@@ -5,9 +5,10 @@ from torch.cuda import amp
 from torchvision import datasets, transforms
 from spikingjelly.activation_based import surrogate, neuron
 from utils import train, validate
-from hs_api.converter import CRI_Converter, Quantize_Network, BN_Folder
+from hs_api.converter import Quantize_Network, BN_Folder
 from hs_api.api import CRI_network
-from models import CNN
+from models import CNN, NMNIST_CNN, Mnist
+from cri_converter import CRI_Converter
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-resume_path', default='', type=str, help='checkpoint file')
@@ -43,6 +44,7 @@ def main():
     
     # Train
     # python test_cnn.py -data-dir /Users/keli/Desktop/CRI/data -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/runs/cnn
+    # python test_cnn.py -data-dir D:/Data -out-dir D://Data/CRI_Mapping/runs/cnn -epoch 1 -T 1 -lr 1e-2
     
     # Verify on Hardware with DVS data
     # python test_cnn.py -data-dir /Users/keli/Desktop/CRI/data -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/runs/cnn -resume_path runs/cnn/checkpoint_max_T_4_lr_0.001.pth -hardware
@@ -71,7 +73,7 @@ def main():
     )
     
     # Initialize SnnTorch/SpikingJelly model
-    net = CNN(channels=args.channels, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
+    net = NMNIST_CNN(channels=args.channels, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
     
     net.to(device)
     
@@ -111,61 +113,61 @@ def main():
                         input_shape = input_shape,
                         backend=backend,
                         v_threshold = v_threshold,
-                        embed_dim=0,
-                        dvs = args.dvs)
+                        embed_dim=0)
+                        #dvs = args.dvs
         
         cn.layer_converter(net_quan)
         
-        breakpoint()
+        # breakpoint()
                 
-        if args.save:
-            cn.save_model()
+    #     if args.save:
+    #         cn.save_model()
         
-        if args.cri:
-            config = {}
-            config['neuron_type'] = "I&F"
-            config['global_neuron_params'] = {}
-            config['global_neuron_params']['v_thr'] = int(qn.v_threshold)
+    #     if args.cri:
+    #         config = {}
+    #         config['neuron_type'] = "I&F"
+    #         config['global_neuron_params'] = {}
+    #         config['global_neuron_params']['v_thr'] = int(qn.v_threshold)
             
-            #TODO: Get the number during conversion
-            cn.bias_start_idx = int(1*28*28)
+    #         #TODO: Get the number during conversion
+    #         cn.bias_start_idx = int(1*28*28)
         
-            if args.hardware:
-                hardwareNetwork = CRI_network(dict(cn.axon_dict),
-                              connections=dict(cn.neuron_dict),
-                              config=config,target='CRI', 
-                              outputs = cn.output_neurons,
-                              simDump=True,
-                              coreID=1)
+    #         if args.hardware:
+    #             hardwareNetwork = CRI_network(dict(cn.axon_dict),
+    #                           connections=dict(cn.neuron_dict),
+    #                           config=config,target='CRI', 
+    #                           outputs = cn.output_neurons,
+    #                           simDump=True,
+    #                           coreID=1)
 
-                validate(args, hardwareNetwork, test_loader, device, cn=cn)
+    #             validate(args, hardwareNetwork, test_loader, device, cn=cn)
                 
-            else:    
-                softwareNetwork = CRI_network(dict(cn.axon_dict),
-                                connections=dict(cn.neuron_dict),
-                                config=config,target='simpleSim', 
-                                outputs = cn.output_neurons,
-                                coreID=1)
-                validate(args, softwareNetwork, test_loader, device, cn=cn)
+    #         else:    
+    #             softwareNetwork = CRI_network(dict(cn.axon_dict),
+    #                             connections=dict(cn.neuron_dict),
+    #                             config=config,target='simpleSim', 
+    #                             outputs = cn.output_neurons,
+    #                             coreID=1)
+    #             validate(args, softwareNetwork, test_loader, device, cn=cn)
     
-    if args.test:
-        if args.resume_path != "":
-            checkpoint = torch.load(args.resume_path, map_location=device)
-            net.load_state_dict(checkpoint['net'])
+    # if args.test:
+    #     if args.resume_path != "":
+    #         checkpoint = torch.load(args.resume_path, map_location=device)
+    #         net.load_state_dict(checkpoint['net'])
             
-        net.eval()
+    #     net.eval()
         
-        if args.quant:
-            #Fold the BN layer 
-            bn = BN_Folder() 
-            net_bn = bn.fold(net)
-            #Weight, Bias Quantization 
-            qn = Quantize_Network(w_alpha=args.alpha) 
-            net_quan = qn.quantize(net_bn)
-            net_quan.to(device)
-            validate(args, net_quan, test_loader, device)
-        else:
-            validate(args, net, test_loader, device)
+    #     if args.quant:
+    #         #Fold the BN layer 
+    #         bn = BN_Folder() 
+    #         net_bn = bn.fold(net)
+    #         #Weight, Bias Quantization 
+    #         qn = Quantize_Network(w_alpha=args.alpha) 
+    #         net_quan = qn.quantize(net_bn)
+    #         net_quan.to(device)
+    #         validate(args, net_quan, test_loader, device)
+    #     else:
+    #         validate(args, net, test_loader, device)
         
         
 if __name__ == '__main__':
