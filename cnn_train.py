@@ -2,6 +2,7 @@ import argparse
 import torch
 from torch.utils.data import DataLoader
 from torch.cuda import amp
+from spikingjelly.datasets import pad_sequence_collate
 from spikingjelly.datasets.dvs128_gesture import DVS128Gesture
 from spikingjelly.activation_based import surrogate, neuron, functional
 from models import DVSGestureNet
@@ -45,15 +46,15 @@ def main():
         
     #Prepare the dataset
     # DVS128
-    train_set = DVS128Gesture(root=args.data_dir, train=True, data_type='frame', frames_number=args.T, split_by='number')
-    test_set = DVS128Gesture(root=args.data_dir, train=False, data_type='frame', frames_number=args.T, split_by='number')
+    train_set = DVS128Gesture(root=args.data_dir, train=True, data_type='frame', duration=1600000)
+    test_set = DVS128Gesture(root=args.data_dir, train=False, data_type='frame', duration=1600000)
     
     # Create DataLoaders
     train_loader = DataLoader(
-        train_set, batch_size=args.b, shuffle=True, drop_last=True, pin_memory = True
+        train_set, batch_size=args.b, shuffle=True, drop_last=True, pin_memory = True, collate_fn=pad_sequence_collate
     )
     test_loader = DataLoader(
-        test_set, batch_size=args.b, shuffle=True, drop_last=True, pin_memory = True
+        test_set, batch_size=args.b, shuffle=True, drop_last=True, pin_memory = True, collate_fn=pad_sequence_collate
     )
     
     # Initialize SnnTorch/SpikingJelly model
@@ -61,14 +62,14 @@ def main():
     
     net.to(device)
     
-    functional.set_step_mode(net, 'm')
+    # functional.set_step_mode(net, 'm')
     
     n_parameters = sum(p.numel() for p in net.parameters() if p.requires_grad)
     print(f"number of params: {n_parameters}")
     
     print('Start Training')
-    # train_DVS(args, net, train_loader, test_loader, device, scaler)
-    train_DVS_Mul(args, net, train_loader, test_loader, device, scaler)    
+    train_DVS(args, net, train_loader, test_loader, device, scaler)
+    # train_DVS_Mul(args, net, train_loader, test_loader, device, scaler)    
         
 if __name__ == '__main__':
     main()

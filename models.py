@@ -201,24 +201,23 @@ class CNN(nn.Module):
     def forward(self, x):
         return self.layer(x)
     
-#Without avg pool 
-class CNN_1(nn.Module):
-    def __init__(self, channels = 8):
+class CNN_stride(nn.Module):
+    def __init__(self, input_channels = 1, channels = 8, 
+                 kernel = 3, padding = 0, stride = 1, bias = False) -> None:
         super().__init__()
-        self.layer = nn.Sequential(
-            layer.Conv2d(1, channels, kernel_size=3, padding=1, bias=False),
-            layer.BatchNorm2d(channels),
-            neuron.IFNode(surrogate_function=surrogate.ATan()),
-            # layer.AvgPool2d(2, 2),  # 14 * 14
-            
-            layer.Flatten(),
-            layer.Linear(channels * 28 * 28, 10, bias=False),
-            neuron.IFNode(surrogate_function=surrogate.ATan()),
-
-            )
-        
+        self.conv = layer.Conv2d(in_channels=input_channels,
+                                 out_channels=channels, 
+                                 kernel_size=kernel, 
+                                 padding=padding, 
+                                 stride=stride, 
+                                 bias=bias)
+        self.flat = layer.Flatten()
+        self.linear = layer.Linear(channels*28*28, 10, bias = False)
     def forward(self, x):
-        return self.layer(x)
+        x = self.conv(x)
+        x = self.flat(x)
+        x = self.linear(x)
+        return x
     
 class CNN_MaxPool(nn.Module):
     def __init__(self, channels=3):
@@ -361,7 +360,6 @@ class SSA(nn.Module):
         x = self.proj_lif(self.proj_linear(x))
         
         return x
-    
     
 class QuantNMNISTNet(nn.Module):
     def __init__(self, channels=128, spiking_neuron: callable = None, **kwargs):
@@ -522,7 +520,6 @@ class DVSGestureNet(nn.Module):
 
     def forward(self, x: torch.Tensor):
         return self.conv_fc(x)
-
 
 class DVS_IBM(nn.Module):
     def __init__(self, spiking_neuron: callable = None, **kwargs) -> None:

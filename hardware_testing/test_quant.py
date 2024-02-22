@@ -29,7 +29,7 @@ parser.add_argument('-transformer', action='store_true', default=False, help='Tr
 def main():
     
     # Train
-    # python test_quant.py -train --data_path /Users/keli/Desktop/CRI/data --out_dir /Users/keli/Desktop/CRI/CRI_Mapping/runs/mnist -T 4 --encoder 
+    # python test_quant.py -train --data_path /Users/keli/code/CRI/data --out_dir /Users/keli/code/CRI/CRI_Mapping/runs/mnist -T 4 --encoder 
     
     args = parser.parse_args()
     

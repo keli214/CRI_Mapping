@@ -43,10 +43,10 @@ parser.add_argument('-hardware',action='store_true', default=False, help='Run th
 def main():
     
     # Train
-    # python main_encoder.py -data-dir /Users/keli/Desktop/CRI/data/NMNIST -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/runs/nmnist -channels 102 -convert -cri
+    # python main_encoder.py -data-dir /Users/keli/code/CRI/data/NMNIST -out-dir /Users/keli/code/CRI/CRI_Mapping/runs/nmnist -channels 102 -convert -cri
     
     # Verify on Hardware with DVS data
-    # python main_encoder.py -data-dir /Users/keli/Desktop/CRI/data/NMNIST -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/runs/nmnist -channels 102 -resume_path runs/nmnist/checkpoint_max_T_16_lr_0.001.pth -convert -cri -hardware -encoder -dvs
+    # python main_encoder.py -data-dir /Users/keli/code/CRI/data/NMNIST -out-dir /Users/keli/code/CRI/CRI_Mapping/runs/nmnist -channels 102 -resume_path runs/nmnist/checkpoint_max_T_16_lr_0.001.pth -convert -cri -hardware -encoder -dvs
     args = parser.parse_args()
     print(args)
 
