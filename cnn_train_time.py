@@ -19,7 +19,6 @@ parser.add_argument('-out-dir', default='/Volumes/export/isn/keli/code/HS/CRI_Ma
 parser.add_argument('-epochs', default=20, type=int)
 parser.add_argument('-lr', default=1e-3, type=float)
 parser.add_argument('-momentum', default=0.9, type=float, help='momentum for SGD')
-
 parser.add_argument('-channels', default=20, type=int)
 parser.add_argument('-writer', action='store_true', default=False, help='Use torch summary')
 parser.add_argument('-encoder',action='store_true',default=True, help='Using spike rate encoder to process the input')

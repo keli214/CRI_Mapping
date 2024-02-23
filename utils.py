@@ -224,7 +224,7 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
     start_epoch = 0
     max_test_acc = -1
     
-    optimizer = torch.optim.Adam(net.parameters(), lr=args.lr)
+    optimizer = torch.optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)
 
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
     loss_fun = nn.MSELoss()
@@ -233,8 +233,7 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
     encoder = encoding.PoissonEncoder()
     
     # using two writers to overlay the plot
-    writer_train = SummaryWriter(os.path.join('log_cnn', 'train'))
-    writer_test = SummaryWriter(os.path.join('log_cnn', 'test'))
+    writer = SummaryWriter('log_dvs')
     
     if args.resume_path != "":
         checkpoint = torch.load(args.resume_path, map_location=device)
@@ -281,9 +280,6 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
         train_loss /= train_samples
         train_acc /= train_samples
         
-        writer_train.add_scalar('train_loss', train_loss, epoch)
-        writer_train.add_scalar('train_acc', train_acc, epoch)
-        
         lr_scheduler.step()
 
         net.eval()
@@ -316,8 +312,10 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
             test_loss /= test_samples
             test_acc /= test_samples
             
-            writer_test.add_scalar('test_loss', test_loss, epoch)
-            writer_test.add_scalar('test_acc', test_acc, epoch)
+            writer.add_scalars('loss', {'train_loss':train_loss,
+                                        'test_loss': test_loss}, epoch)
+            writer.add_scalars('acc', {'train_acc':train_acc,
+                                        'test_acc': test_acc}, epoch)
             
         save_max = False
         if test_acc > max_test_acc:
@@ -467,8 +465,7 @@ def train_DVS_Time(args, net, train_loader, test_loader, device, scaler):
     encoder = encoding.PoissonEncoder()
     
     # using two writers to overlay the plot
-    writer_train = SummaryWriter(os.path.join('log_cnn', 'train'))
-    writer_test = SummaryWriter(os.path.join('log_cnn', 'test'))
+    writer = SummaryWriter('log_dvs_time')
     
     if args.resume_path != "":
         checkpoint = torch.load(args.resume_path, map_location=device)
@@ -516,9 +513,6 @@ def train_DVS_Time(args, net, train_loader, test_loader, device, scaler):
         train_loss /= train_samples
         train_acc /= train_samples
         
-        writer_train.add_scalar('train_loss', train_loss, epoch)
-        writer_train.add_scalar('train_acc', train_acc, epoch)
-        
         lr_scheduler.step()
 
         net.eval()
@@ -552,8 +546,10 @@ def train_DVS_Time(args, net, train_loader, test_loader, device, scaler):
             test_loss /= test_samples
             test_acc /= test_samples
             
-            writer_test.add_scalar('test_loss', test_loss, epoch)
-            writer_test.add_scalar('test_acc', test_acc, epoch)
+            writer.add_scalars('loss', {'train_loss':train_loss,
+                                        'test_loss': test_loss}, epoch)
+            writer.add_scalars('acc', {'train_acc':train_acc,
+                                        'test_acc': test_acc}, epoch)
             
         save_max = False
         if test_acc > max_test_acc:
