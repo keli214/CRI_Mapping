@@ -71,7 +71,7 @@ def train(args, net, train_loader, test_loader, device, scaler):
             optimizer.zero_grad()
             img = img.to(device)
             label = label.to(device)
-            label_onehot = F.one_hot(label, 11).float()
+            label_onehot = F.one_hot(label, args.targets).float()
             out_fr = 0.
             if args.encoder:
                 if args.amp:
@@ -255,7 +255,7 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
             img = img.to(device)
             img = img.transpose(0, 1) 
             label = label.to(device)
-            label_onehot = F.one_hot(label, 11).float()
+            label_onehot = F.one_hot(label, args.targets).float()
             out_fr = 0.
             
             with amp.autocast():
@@ -293,7 +293,7 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
                 img = img.to(device)
                 img = img.transpose(0, 1) 
                 label = label.to(device)
-                label_onehot = F.one_hot(label, 11).float()
+                label_onehot = F.one_hot(label, args.targets).float()
                 out_fr = 0.
         
                 for t in range(args.T):
@@ -373,7 +373,7 @@ def train_DVS_Mul(args, net, train_loader, test_loader, device, scaler):
             img = img.to(device)
             img = img.transpose(0, 1) 
             label = label.to(device)
-            label_onehot = F.one_hot(label, 11).float()
+            label_onehot = F.one_hot(label, args.targets).float()
             out_fr = 0.
             
             with amp.autocast():
@@ -410,7 +410,7 @@ def train_DVS_Mul(args, net, train_loader, test_loader, device, scaler):
                 img = img.to(device)
                 img = img.transpose(0, 1) 
                 label = label.to(device)
-                label_onehot = F.one_hot(label, 11).float()
+                label_onehot = F.one_hot(label, args.targets).float()
                 
                 out_fr = net(img).mean(0)
                 loss = loss_fun(out_fr, label_onehot)
@@ -487,7 +487,7 @@ def train_DVS_Time(args, net, train_loader, test_loader, device, scaler):
             img = img.to(device)
             img = img.transpose(0, 1) 
             label = label.to(device)
-            label_onehot = F.one_hot(label, 11).float()
+            label_onehot = F.one_hot(label, args.targets).float()
             T = img.shape[0]
             out_fr = 0.
             
@@ -526,7 +526,7 @@ def train_DVS_Time(args, net, train_loader, test_loader, device, scaler):
                 img = img.to(device)
                 img = img.transpose(0, 1) 
                 label = label.to(device)
-                label_onehot = F.one_hot(label, 11).float()
+                label_onehot = F.one_hot(label, args.targets).float()
                 out_fr = 0.
                 T = img.shape[0]
         
@@ -712,7 +712,7 @@ def validate_DVS(args, net, test_loader, device, converter=None):
 
     for img, label, x_len in test_loader:
         img = img.transpose(0, 1) # [B, T, C, H, W] -> [T, B, C, H, W]
-        label_onehot = F.one_hot(label, 11).float()
+        label_onehot = F.one_hot(label, args.target).float()
         out_fr = 0.
         
         cri_input = []

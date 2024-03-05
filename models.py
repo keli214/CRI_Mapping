@@ -658,8 +658,7 @@ class IBM_DVS_net(nn.Module):
         x = self.linear(x)
         x = self.lif14(x)
         return x
-    
-    
+        
 class NMNIST_SD(nn.Module):
     def __init__(self, in_channels = 2, channels=8, spiking_neuron: callable = None, **kwargs):
         super().__init__()
@@ -669,7 +668,8 @@ class NMNIST_SD(nn.Module):
             layer.BatchNorm2d(channels),
             spiking_neuron(**deepcopy(kwargs)),
 
-            layer.Linear(13*13*channels, 10),
+            layer.Flatten(),
+            layer.Linear(16*16*channels, 10),
             spiking_neuron(**deepcopy(kwargs)),
 
         )

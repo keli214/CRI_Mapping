@@ -30,6 +30,7 @@ parser.add_argument('-j', default=8, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
 parser.add_argument('-opt', default="adam", type=str, help='use which optimizer. SDG or Adam')
 parser.add_argument('-dvs', action='store_true', default=True, help='Using the DVS datasets')
+parser.add_argument('-targets', default=11, type=int, help='target label size')
 
 def main():
     
