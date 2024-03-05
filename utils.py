@@ -80,7 +80,7 @@ def train(args, net, train_loader, test_loader, device, scaler):
                             encoded_img = encoder(img)
                             out_fr += net(encoded_img)
                         if args.dvs:
-                            # [N, T, C, H, W] -> [T, N, C, H, W]Fab
+                            # [N, T, C, H, W] -> [T, N, C, H, W]
                             img = img.transpose(0, 1) 
                             for t in range(args.T):
                                 encoded_img = encoder(img[t])
@@ -224,7 +224,8 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
     start_epoch = 0
     max_test_acc = -1
     
-    optimizer = torch.optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)
+    # optimizer = torch.optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)
+    optimizer = torch.optim.Adam(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
     loss_fun = nn.MSELoss()
@@ -331,9 +332,9 @@ def train_DVS(args, net, train_loader, test_loader, device, scaler):
         }
 
         if save_max:
-            torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_max_T_{args.T}_C_{args.channels}_lr_{args.lr}.pth'))
+            torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_max_T_{args.T}_C_{args.channels}_lr_{args.lr}_opt_{args.opt}.pth'))
     
-        torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_latest_T_{args.T}_C_{args.channels}_lr_{args.lr}.pth'))
+        torch.save(checkpoint, os.path.join(args.out_dir, f'checkpoint_latest_T_{args.T}_C_{args.channels}_lr_{args.lr}_opt_{args.opt}.pth'))
 
         print(f'epoch = {epoch}, train_loss ={train_loss: .4f}, train_acc ={train_acc: .4f}, test_loss ={test_loss: .4f}, test_acc ={test_acc: .4f}, max_test_acc ={max_test_acc: .4f}')
         print(f'train speed ={train_speed: .4f} images/s, test speed ={test_speed: .4f} images/s')

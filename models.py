@@ -658,3 +658,21 @@ class IBM_DVS_net(nn.Module):
         x = self.linear(x)
         x = self.lif14(x)
         return x
+    
+    
+class NMNIST_SD(nn.Module):
+    def __init__(self, in_channels = 2, channels=8, spiking_neuron: callable = None, **kwargs):
+        super().__init__()
+            
+        self.conv_fc = nn.Sequential(
+            layer.Conv2d(in_channels, channels, kernel_size=3, stride=2, padding=0, bias=False),
+            layer.BatchNorm2d(channels),
+            spiking_neuron(**deepcopy(kwargs)),
+
+            layer.Linear(13*13*channels, 10),
+            spiking_neuron(**deepcopy(kwargs)),
+
+        )
+
+    def forward(self, x: torch.Tensor):
+        return self.conv_fc(x)
