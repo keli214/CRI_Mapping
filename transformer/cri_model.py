@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 from spikingjelly.activation_based import neuron
-# from timm.models.layers import to_2tuple, trunc_normal_
-# from timm.models.registry import register_model
-# from timm.models.vision_transformer import _cfg
+from timm.models.layers import to_2tuple, trunc_normal_
+from timm.models.registry import register_model
+from timm.models.vision_transformer import _cfg
 import torch.nn.functional as F
 from functools import partial
 import numpy as np 
@@ -349,7 +349,7 @@ class Spikformer(nn.Module):
         return x
 
 
-# @register_model
+@register_model
 def spikformer(pretrained=False, **kwargs):
     model = Spikformer(
         # img_size_h=224, img_size_h=224,

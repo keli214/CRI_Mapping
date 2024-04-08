@@ -1,15 +1,15 @@
 import torch
 import torch.nn as nn
 from spikingjelly.activation_based import neuron
-# from timm.models.layers import to_2tuple, trunc_normal_
-# from timm.models.registry import register_model
-# from timm.models.vision_transformer import _cfg
+from timm.models.layers import to_2tuple, trunc_normal_
+from timm.models.registry import register_model
+from timm.models.vision_transformer import _cfg
 import torch.nn.functional as F
 from functools import partial
 import numpy as np 
 __all__ = ['spikeformer']
 from torch.utils.tensorboard import SummaryWriter
-from quantization import act_quantization
+from quant import act_quantization
 from local_attention.local_attention import LocalAttention
 
 def activation_visual(x, layer):
@@ -109,15 +109,11 @@ class SSA(nn.Module):
         v_linear_out = self.v_lif(v_linear_out)
         v = v_linear_out.reshape(T, B, N, self.num_heads, C//self.num_heads).permute(0, 1, 3, 2, 4).contiguous()
         
-        # attn = (q @ k.transpose(-2, -1)) 
-        
-        # attn = self.act_alq(attn, self.act_alpha).clone().detach().requires_grad_(True)
-        
+        # Original implementation
+        # attn = (q @ k.transpose(-2, -1))         
         # x = attn @ v
-        
-        # x = self.act_alq(x, self.act_alpha).clone().detach().requires_grad_(True)
-        # breakpoint()
-        
+
+        # using local attention pytorch implementation
         attn = LocalAttention(
           window_size = C//self.num_heads//12,       # window size. 512 is optimal, but 256 or 128 yields good enough results
           look_backward = 1,       # each window looks at the window before
@@ -125,10 +121,7 @@ class SSA(nn.Module):
           dropout = 0,           # post-attention dropout
           exact_windowsize = False # if this is set to true, in the causal setting, each query will see at maximum the number of keys equal to the window size
         )
-        
         x = attn(q,k,v)
-        
-        # breakpoint()
         
         x = x.transpose(2, 3).reshape(T, B, N, C).contiguous()
         
@@ -364,7 +357,7 @@ class Spikeformer(nn.Module):
         return x
 
 
-# @register_model
+@register_model
 def spikeformer(pretrained=False, **kwargs):
     model = Spikeformer(
         # img_size_h=224, img_size_h=224,

@@ -39,7 +39,7 @@ from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy, JsdCro
 from timm.optim import create_optimizer_v2, optimizer_kwargs
 from timm.scheduler import create_scheduler
 from timm.utils import ApexScaler, NativeScaler
-import cri_model
+import spikeformer_local
 try:
     from apex import amp
     from apex.parallel import DistributedDataParallel as ApexDDP
