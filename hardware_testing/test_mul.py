@@ -8,16 +8,12 @@ from spikingjelly.activation_based import functional, encoding
 from torch.utils.data import DataLoader
 import time
 import argparse
-from cri_converter import CRI_Converter
-from quantization import Quantizer
-from bn_folder import BN_Folder
+from hs_api.converter import CRI_Converter, Quantizer, BN_Folder
 from hs_api.api import CRI_network
 from utils import train, validate
 from models import SSA
 from tqdm import tqdm
 import numpy as np
-
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--resume_path', default='', type=str, help='checkpoint file')
@@ -153,7 +149,7 @@ def main():
     num_batches = 0
     encoder = encoding.PoissonEncoder()
     
-    for img, label in tqdm(test_loader):
+    for i, label in tqdm(test_loader):
         img = img.to(device) #one batch
         label = label.to(device)
         
@@ -172,7 +168,6 @@ def main():
             
             # if(spiking_mul.sum() > 0):
             #     print((q@k.transpose(-1,-2)@v > 0).float())
-            
             
             if args.hardware:
                 first_out, cri_output = cri_convert._run_CRI_hw_ssa_testing(cri_input,hardwareNetwork)

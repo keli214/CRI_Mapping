@@ -64,7 +64,7 @@ def main():
     net.to(device)
     
     n_parameters = sum(p.numel() for p in net.parameters() if p.requires_grad)
-    print(f"number of params: {n_parameters}")
+    print(f"Number of params: {n_parameters}")
     
     print('Start Training')
     train_DVS_Time(args, net, train_loader, test_loader, device, scaler)  

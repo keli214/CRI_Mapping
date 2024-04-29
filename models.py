@@ -509,11 +509,11 @@ class DVSGestureNet(nn.Module):
             
             layer.Flatten(),
             layer.Dropout(0.5),
-            layer.Linear(channels * 15 * 15, 512),
+            layer.Linear(channels * 15 * 15, 512, bias=False),
             spiking_neuron(**deepcopy(kwargs)),
 
             layer.Dropout(0.5),
-            layer.Linear(512, 11),
+            layer.Linear(512, 11, bias=False),
             spiking_neuron(**deepcopy(kwargs)),
 
         )
@@ -663,16 +663,21 @@ class NMNIST_SD(nn.Module):
     def __init__(self, in_channels = 2, channels=8, spiking_neuron: callable = None, **kwargs):
         super().__init__()
             
-        self.conv_fc = nn.Sequential(
-            layer.Conv2d(in_channels, channels, kernel_size=3, stride=2, padding=0, bias=False),
-            layer.BatchNorm2d(channels),
-            spiking_neuron(**deepcopy(kwargs)),
-
-            layer.Flatten(),
-            layer.Linear(16*16*channels, 10),
-            spiking_neuron(**deepcopy(kwargs)),
-
-        )
+        self.conv = layer.Conv2d(in_channels, channels, kernel_size=3, stride=2, padding=0, bias=False)
+        self.bn = layer.BatchNorm2d(channels)
+        self.lif1 = spiking_neuron(**deepcopy(kwargs))
+        self.flat = layer.Flatten()
+        self.linear = layer.Linear(16*16*channels, 10)
+        self.lif2 = spiking_neuron(**deepcopy(kwargs))
 
     def forward(self, x: torch.Tensor):
-        return self.conv_fc(x)
+        breakpoint()
+        x = self.conv(x)
+        x = self.bn(x)
+        x = self.lif1(x)
+        x = self.flat(x)
+        x = self.linear(x)
+        x = self.lif2(x)
+        return x
+    
+        

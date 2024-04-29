@@ -2,18 +2,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.cuda import amp
-import argparse
-from torch.utils.data import DataLoader
 from spikingjelly.activation_based import encoding, functional
-from spikingjelly.datasets import padded_sequence_mask
 import time
 import os
 import datetime
 from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 from spikingjelly.activation_based.neuron import IFNode, LIFNode
 from torch.utils.tensorboard import SummaryWriter
-from torch.autograd import profiler
-import numpy as np
 
 def isSNNLayer(layer):
     return isinstance(layer, MultiStepLIFNode) or isinstance(layer, LIFNode) or isinstance(layer, IFNode)
@@ -349,8 +344,8 @@ def train_DVS_Mul(args, net, train_loader, test_loader, device, scaler):
     optimizer = torch.optim.Adam(net.parameters(), lr=args.lr)
 
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
-    loss_fun = nn.MSELoss()
-    #loss_fun = nn.CrossEntropyLoss()
+    #loss_fun = nn.MSELoss()
+    loss_fun = nn.CrossEntropyLoss()
     
     writer = SummaryWriter(log_dir='./log_ibm')
             
