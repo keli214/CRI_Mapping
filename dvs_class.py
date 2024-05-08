@@ -12,6 +12,7 @@ import os
 import argparse
 import datetime
 from models import StrideDVSGestureNet, DVSGestureNet
+from torchvision.transforms import transforms
 
 def main():
     # python -m spikingjelly.activation_based.examples.classify_dvsg -T 16 -device cuda:0 -b 16 -epochs 64 -data-dir /datasets/DVSGesture/ -amp -cupy -opt adam -lr 0.001 -j 8
@@ -52,10 +53,8 @@ def main():
 
     net.to(args.device)
 
-    train_set = DVS128Gesture(root=args.data_dir, train=True, data_type='frame', frames_number=args.T, split_by='number')
-    test_set = DVS128Gesture(root=args.data_dir, train=False, data_type='frame', frames_number=args.T, split_by='number')
-
-
+    train_set = DVS128Gesture(root=args.data_dir, train=True, data_type='frame', frames_number=args.T, split_by='number', transform=transforms.Compose([transforms.Resize((2,64,64),transforms.InterpolationMode.NEAREST_EXACT)]))
+    test_set = DVS128Gesture(root=args.data_dir, train=False, data_type='frame', frames_number=args.T, split_by='number', transform=transforms.Compose([transforms.Resize((2,64,64),transforms.InterpolationMode.NEAREST_EXACT)]))
 
     train_data_loader = torch.utils.data.DataLoader(
         dataset=train_set,
@@ -74,7 +73,6 @@ def main():
         num_workers=args.j,
         pin_memory=True
     )
-
 
     scaler = None
     if args.amp:
