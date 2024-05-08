@@ -489,7 +489,7 @@ class QuantCSNN(nn.Module):
         fr = x_seq.mean(0)
         return fr
 
-class DVSGestureNet(nn.Module):
+class StrideDVSGestureNet(nn.Module):
     def __init__(self, channels=128, encoder = 3, spiking_neuron: callable = None, **kwargs):
         super().__init__()
 
@@ -509,13 +509,48 @@ class DVSGestureNet(nn.Module):
             
             layer.Flatten(),
             layer.Dropout(0.5),
-            layer.Linear(channels * 15 * 15, 512, bias=False),
+            layer.Linear(channels * 3 * 3, 512, bias=False),
             spiking_neuron(**deepcopy(kwargs)),
 
             layer.Dropout(0.5),
-            layer.Linear(512, 11, bias=False),
+            layer.Linear(512, 110, bias=False),
             spiking_neuron(**deepcopy(kwargs)),
 
+            layer.VotingLayer(10)
+
+        )
+
+    def forward(self, x: torch.Tensor):
+        return self.conv_fc(x)
+
+class DVSGestureNet(nn.Module):
+    def __init__(self, channels=128, encoder = 5, spiking_neuron: callable = None, *args, **kwargs):
+        super().__init__()
+
+        conv = []
+        for i in range(encoder):
+            if conv.__len__() == 0:
+                in_channels = 2
+            else:
+                in_channels = channels
+
+            conv.append(layer.Conv2d(in_channels, channels, kernel_size=3, padding=1, bias=False))
+            conv.append(layer.BatchNorm2d(channels))
+            conv.append(spiking_neuron(*args, **kwargs))
+            conv.append(layer.MaxPool2d(2, 2))
+
+
+        self.conv_fc = nn.Sequential(
+            *conv,
+
+            layer.Flatten(),
+            layer.Dropout(0.5),
+            layer.Linear(channels * 4 * 4, 110),
+            spiking_neuron(*args, **kwargs),
+
+            layer.Dropout(0.5),
+            layer.Linear(110, 11),
+            spiking_neuron(*args, **kwargs)
         )
 
     def forward(self, x: torch.Tensor):
