@@ -545,7 +545,7 @@ class DVSGestureNet(nn.Module):
 
             layer.Flatten(),
             layer.Dropout(0.5),
-            layer.Linear(channels * 4 * 4, 110),
+            layer.Linear(channels * 2 * 2, 110),
             spiking_neuron(*args, **kwargs),
 
             layer.Dropout(0.5),

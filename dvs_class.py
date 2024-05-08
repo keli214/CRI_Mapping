@@ -15,7 +15,7 @@ from models import StrideDVSGestureNet, DVSGestureNet
 from torchvision.transforms import transforms
 
 def main():
-    # python -m spikingjelly.activation_based.examples.classify_dvsg -T 16 -device cuda:0 -b 16 -epochs 64 -data-dir /datasets/DVSGesture/ -amp -cupy -opt adam -lr 0.001 -j 8
+    # python dvs_class.py -data-dir /Users/keli/Code/CRI/data/DVS128Gesture -out-dir /Users/keli/Code/CRI/CRI_Mapping/runs/dvs_gesture -device cpu -channels 16 -opt adam -lr 0.001
 
     parser = argparse.ArgumentParser(description='Classify DVS Gesture')
     parser.add_argument('-T', default=16, type=int, help='simulating time-steps')
@@ -53,8 +53,8 @@ def main():
 
     net.to(args.device)
 
-    train_set = DVS128Gesture(root=args.data_dir, train=True, data_type='frame', frames_number=args.T, split_by='number', transform=transforms.Compose([transforms.Resize((2,64,64),transforms.InterpolationMode.NEAREST_EXACT)]))
-    test_set = DVS128Gesture(root=args.data_dir, train=False, data_type='frame', frames_number=args.T, split_by='number', transform=transforms.Compose([transforms.Resize((2,64,64),transforms.InterpolationMode.NEAREST_EXACT)]))
+    train_set = DVS128Gesture(root=args.data_dir, train=True, data_type='frame', frames_number=args.T, split_by='number')
+    test_set = DVS128Gesture(root=args.data_dir, train=False, data_type='frame', frames_number=args.T, split_by='number')
 
     train_data_loader = torch.utils.data.DataLoader(
         dataset=train_set,
@@ -116,6 +116,13 @@ def main():
         args_txt.write(str(args))
         args_txt.write('\n')
         args_txt.write(' '.join(sys.argv))
+        
+    transform = transforms.Compose(
+        [
+            transforms.Resize([64,64], 
+                            transforms.InterpolationMode.NEAREST)
+        ]
+    )
 
     for epoch in range(start_epoch, args.epochs):
         start_time = time.time()
@@ -127,6 +134,7 @@ def main():
             optimizer.zero_grad()
             frame = frame.to(args.device)
             frame = frame.transpose(0, 1)  # [N, T, C, H, W] -> [T, N, C, H, W]
+            frame = torch.cat([transform(f).unsqueeze(0) for f in frame]) # reducing the size to 2*64*64
             label = label.to(args.device)
             label_onehot = F.one_hot(label, 11).float()
 
@@ -166,6 +174,7 @@ def main():
             for frame, label in test_data_loader:
                 frame = frame.to(args.device)
                 frame = frame.transpose(0, 1)  # [N, T, C, H, W] -> [T, N, C, H, W]
+                frame = torch.cat([transform(f).unsqueeze(0) for f in frame]) # reducing the size to 2*64*64
                 label = label.to(args.device)
                 label_onehot = F.one_hot(label, 11).float()
                 out_fr = net(frame).mean(0)
