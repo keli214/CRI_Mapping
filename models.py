@@ -524,7 +524,7 @@ class StrideDVSGestureNet(nn.Module):
         return self.conv_fc(x)
 
 class DVSGestureNet(nn.Module):
-    def __init__(self, channels=128, encoder = 5, spiking_neuron: callable = None, *args, **kwargs):
+    def __init__(self, channels=128, encoder = 4, spiking_neuron: callable = None, *args, **kwargs):
         super().__init__()
 
         conv = []
@@ -545,7 +545,7 @@ class DVSGestureNet(nn.Module):
 
             layer.Flatten(),
             layer.Dropout(0.5),
-            layer.Linear(channels * 2 * 2, 110),
+            layer.Linear(channels * 4 * 4, 110),
             spiking_neuron(*args, **kwargs),
 
             layer.Dropout(0.5),

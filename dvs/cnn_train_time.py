@@ -2,11 +2,11 @@ import argparse
 import torch
 from torch.utils.data import DataLoader
 from torch.cuda import amp
+from spikingjelly.datasets import pad_sequence_collate
 from spikingjelly.datasets.dvs128_gesture import DVS128Gesture
-from spikingjelly.activation_based import surrogate, neuron
+from spikingjelly.activation_based import surrogate, neuron, functional
 from models import DVSGestureNet
-from utils import train_DVS, train_DVS_Mul
-from spikingjelly.activation_based import functional
+from utils import train_DVS_Time
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-resume_path', default='', type=str, help='checkpoint file')
@@ -20,7 +20,6 @@ parser.add_argument('-epochs', default=20, type=int)
 parser.add_argument('-lr', default=1e-3, type=float)
 parser.add_argument('-momentum', default=0.9, type=float, help='momentum for SGD')
 parser.add_argument('-weight_decay', default=0.01, type=float, help='weight decay for Adam')
-parser.add_argument('-T', default=16, type=int)
 parser.add_argument('-channels', default=20, type=int)
 parser.add_argument('-writer', action='store_true', default=False, help='Use torch summary')
 parser.add_argument('-encoder',action='store_true',default=True, help='Using spike rate encoder to process the input')
@@ -48,30 +47,27 @@ def main():
         
     #Prepare the dataset
     # DVS128
-    train_set = DVS128Gesture(root=args.data_dir, train=True, data_type='frame', frames_number=args.T, split_by='number')
-    test_set = DVS128Gesture(root=args.data_dir, train=False, data_type='frame', frames_number=args.T, split_by='number')
+    train_set = DVS128Gesture(root=args.data_dir, train=True, data_type='frame', duration=1600000)
+    test_set = DVS128Gesture(root=args.data_dir, train=False, data_type='frame', duration=1600000)
     
     # Create DataLoaders
     train_loader = DataLoader(
-        train_set, batch_size=args.b, shuffle=True, drop_last=True, pin_memory = True
+        train_set, batch_size=args.b, shuffle=True, drop_last=True, pin_memory = True, collate_fn=pad_sequence_collate
     )
     test_loader = DataLoader(
-        test_set, batch_size=args.b, shuffle=True, drop_last=True, pin_memory = True
+        test_set, batch_size=args.b, shuffle=True, drop_last=True, pin_memory = True, collate_fn=pad_sequence_collate
     )
     
     # Initialize SnnTorch/SpikingJelly model
-    net = DVSGestureNet(channels=20, spiking_neuron=neuron.IFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
+    net = DVSGestureNet(channels=args.channels, spiking_neuron=neuron.IFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
     
     net.to(device)
     
-    functional.set_step_mode(net, 'm')
-    
     n_parameters = sum(p.numel() for p in net.parameters() if p.requires_grad)
-    print(f"number of params: {n_parameters}")
+    print(f"Number of params: {n_parameters}")
     
     print('Start Training')
-    # train_DVS(args, net, train_loader, test_loader, device, scaler)
-    train_DVS_Mul(args, net, train_loader, test_loader, device, scaler)    
+    train_DVS_Time(args, net, train_loader, test_loader, device, scaler)  
         
 if __name__ == '__main__':
     main()
