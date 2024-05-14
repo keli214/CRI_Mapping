@@ -39,7 +39,7 @@ def main():
     args = parser.parse_args()
     print(args)
 
-    net = DVSGestureNet(encoder=args.layer, channels=args.channels, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
+    net = DVSGestureNet(encoder=args.layer, channels=args.channels, decay_input=False, spiking_neuron=neuron.LIFNode, surrogate_function=surrogate.ATan(), detach_reset=True)
 
     n_parameters = sum(p.numel() for p in net.parameters() if p.requires_grad)
     print(f"number of params: {n_parameters}")
