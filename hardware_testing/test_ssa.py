@@ -7,14 +7,11 @@ from spikingjelly.activation_based import functional, encoding
 from torch.utils.data import DataLoader
 import time
 import argparse
-from cri_converter import CRI_Converter
-from quantization import Quantizer
-from bn_folder import BN_Folder
-from hs_api.api import CRI_network
+from hs_api.converter import CRI_Converter, Quantizer, BN_Folder
 from utils import train, validate
 from tqdm import tqdm
 import numpy as np
-from spikeformer import Spikeformer, SSA
+from transformer.spikeformer import Spikeformer, SSA
 
 
 parser = argparse.ArgumentParser()

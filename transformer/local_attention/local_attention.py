@@ -170,7 +170,7 @@ class LocalAttention(nn.Module):
 
         pad_mask = bq_k == pad_value
 
-        sim = einsum('b h i e, b h j e -> b h i j', bq, bk)
+        sim = ('b h i e, b h j e -> b h i j', bq, bk)
 
         if exists(attn_bias):
             heads = attn_bias.shape[0]

@@ -37,10 +37,10 @@ parser.add_argument('-hardware',action='store_true', default=False, help='Run th
 def main():
     
     # Train
-    # python test_cnn.py -data-dir /Users/keli/Desktop/CRI/data -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/runs/cnn
+    # python test_cnn.py -data-dir /Users/keli/code/CRI/data -out-dir /Users/keli/code/CRI/CRI_Mapping/runs/cnn
     
     # Verify on Hardware
-    # python test_cnn.py -data-dir /Users/keli/Desktop/CRI/data -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/runs/cnn -resume_path runs/cnn/checkpoint_max_T_4_lr_0.001.pth -hardware
+    # python test_cnn.py -data-dir /Users/keli/code/CRI/data -out-dir /Users/keli/code/CRI/CRI_Mapping/runs/cnn -resume_path runs/cnn/checkpoint_max_T_4_lr_0.001.pth -hardware
     args = parser.parse_args()
     print(args)
 

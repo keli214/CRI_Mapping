@@ -29,7 +29,7 @@ parser.add_argument('-alpha',  default=4, type=int, help='Range of value for qua
 def main():
     
     # Verify on Hardware with DVS data
-    # python cnn_nice.py -data-dir /Users/keli/Desktop/CRI/data/NMNIST -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/runs/nmnist -resume_path runs/nmnist/checkpoint_max_T_16_C_80_lr_0.001.pth
+    # python cnn_nice.py -data-dir /Users/keli/code/CRI/data/NMNIST -out-dir /Users/keli/code/CRI/CRI_Mapping/runs/nmnist -resume_path runs/nmnist/checkpoint_max_T_16_C_80_lr_0.001.pth
     
     args = parser.parse_args()
     print(args)

@@ -16,7 +16,7 @@ from hs_api.converter import CRI_Converter, Quantize_Network
 
 def main():
     # Training 
-    # python main.py -T 16 -channels 102 -device cpu -b 16 -epochs 64 -data-dir /Users/keli/Desktop/CRI/data/NMNIST -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/NICE/output -opt adam -lr 0.001 -j 8
+    # python main.py -T 16 -channels 102 -device cpu -b 16 -epochs 64 -data-dir /Users/keli/code/CRI/data/NMNIST -out-dir /Users/keli/code/CRI/CRI_Mapping/NICE/output -opt adam -lr 0.001 -j 8
 
     # Conversion
     # python main.py -T 16 -channels 102 -device cpu -convert
@@ -64,7 +64,7 @@ def main():
         #Set the parameters for conversion
         input_layer = 0 #first pytorch layer that acts as synapses, indexing begins at 0 
         output_layer = 13 #last pytorch layer that acts as synapses
-        input_shape = (2, 28, 28)
+        input_shape = (2, 34, 34)
         backend = 'spikingjelly'
         v_threshold = qn.v_threshold
         print(f"Threshold {v_threshold}")

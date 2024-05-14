@@ -16,7 +16,7 @@ from hs_api.converter import CRI_Converter, Quantize_Network
 
 def main():
     # Training 
-    # python main_quant.py -T 16 -channels 102 -device cpu -b 16 -epochs 64 -data-dir /Users/keli/Desktop/CRI/data/NMNIST -out-dir /Users/keli/Desktop/CRI/CRI_Mapping/NICE/output -opt adam -lr 0.001 -j 8
+    # python main_quant.py -T 16 -channels 102 -device cpu -b 16 -epochs 64 -data-dir /Users/keli/code/CRI/data/NMNIST -out-dir /Users/keli/code/CRI/CRI_Mapping/NICE/output -opt adam -lr 0.001 -j 8
 
     # Conversion
     # python main_quant.py -T 16 -channels 102 -device cpu -convert

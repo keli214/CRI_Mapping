@@ -30,7 +30,6 @@ def activation_histogram(x):
     tag = f"Range_{x.shape}"
     writer.add_histogram(tag, flattened_weights, global_step=0, bins='tensorflow')
     writer.close()
-
     
 class MLP(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, drop=0.):
