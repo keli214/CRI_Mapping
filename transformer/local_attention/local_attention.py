@@ -170,7 +170,8 @@ class LocalAttention(nn.Module):
 
         pad_mask = bq_k == pad_value
 
-        sim = ('b h i e, b h j e -> b h i j', bq, bk)
+        sim = einsum('b h i e, b h j e -> b h i j', bq, bk)
+        sim = torch.where(sim > 0, 1.0, 0.0).cuda()
 
         if exists(attn_bias):
             heads = attn_bias.shape[0]
@@ -227,13 +228,15 @@ class LocalAttention(nn.Module):
 
         # attention
 
-        attn = sim.softmax(dim = -1)
-        attn = self.dropout(attn)
+        # remove softmax for CRI
+        # attn = sim.softmax(dim = -1)
+        attn = self.dropout(sim)
 
         # aggregation
 
         out = einsum('b h i j, b h j e -> b h i e', attn, bv)
         out = rearrange(out, 'b w n d -> b (w n) d')
+        out = torch.where(out > 0, 1.0, 0.0).cuda()
 
         if autopad:
             out = out[:, :orig_seq_len, :]
