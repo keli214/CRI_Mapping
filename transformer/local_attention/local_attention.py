@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from einops import rearrange, repeat, pack, unpack
 
 from local_attention.rotary import SinusoidalEmbeddings, apply_rotary_pos_emb
-
+from spikingjelly.activation_based import neuron
 # constant
 
 TOKEN_SELF_ATTN_VALUE = -5e4
@@ -100,6 +100,10 @@ class LocalAttention(nn.Module):
                 use_xpos = use_xpos,
                 scale_base = default(xpos_scale_base, window_size // 2)
             )
+            
+        # spikeformer attention
+        self.lif1 = neuron.LIFNode(tau=2.0)
+        self.lif2 = neuron.LIFNode(tau=2.0)
 
     def forward(
         self,
@@ -171,7 +175,7 @@ class LocalAttention(nn.Module):
         pad_mask = bq_k == pad_value
 
         sim = einsum('b h i e, b h j e -> b h i j', bq, bk)
-        sim = torch.where(sim > 0, 1.0, 0.0).cuda()
+        sim = self.lif1(sim)
 
         if exists(attn_bias):
             heads = attn_bias.shape[0]
@@ -236,7 +240,7 @@ class LocalAttention(nn.Module):
 
         out = einsum('b h i j, b h j e -> b h i e', attn, bv)
         out = rearrange(out, 'b w n d -> b (w n) d')
-        out = torch.where(out > 0, 1.0, 0.0).cuda()
+        out = self.lif2(out)
 
         if autopad:
             out = out[:, :orig_seq_len, :]
